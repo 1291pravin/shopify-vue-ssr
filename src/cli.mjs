@@ -44,7 +44,11 @@ try {
           for (const { name, file } of await resolveIslands(config, root)) console.log(`${name} -> ${relative(root, file).replaceAll('\\', '/')}`)
         }
         else if (command === 'build') await buildProject(config)
-        else if (command === 'check') { console.log(`Islands: ${(await resolveIslands(config, root)).length}`); const result = await runCheck(config); console.log(JSON.stringify({ storeId: config.storeId, store: config.store, ...result.counts })); if (result.failures.length) process.exitCode = 1 }
+        else if (command === 'check') { console.log(`Islands: ${(await resolveIslands(config, root)).length}`); const result = await runCheck(config)
+          // In check, a case that renders and hydrates cleanly is counted as "skipped" (nothing to store); report it as passed.
+          const { islands: cases, skipped: passed, failed } = result.counts
+          console.log(flags.has('--json') ? JSON.stringify({ storeId: config.storeId, cases, passed, failed }) : `Check${config.storeId ? ` [${config.storeId}]` : ''}: ${passed} of ${cases} fixture cases passed, ${failed} failed${failed ? ' (see ssr-report/ and run repro <id>)' : ''}`)
+          if (result.failures.length) process.exitCode = 1 }
         else if (command === 'sync' || command === 'doctor') {
           const sitemap = flags.get('--sitemap') ?? (!inputs.length ? config.sitemap : undefined)
           if (!inputs.length && !sitemap) throw new Error(`${command} needs URLs, HTML files, or --sitemap URL`)
