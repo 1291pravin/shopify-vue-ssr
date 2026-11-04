@@ -47,7 +47,7 @@ try {
         else if (command === 'check') { console.log(`Islands: ${(await resolveIslands(config, root)).length}`); const result = await runCheck(config)
           // In check, a case that renders and hydrates cleanly is counted as "skipped" (nothing to store); report it as passed.
           const { islands: cases, skipped: passed, failed } = result.counts
-          console.log(flags.has('--json') ? JSON.stringify({ storeId: config.storeId, cases, passed, failed }) : `Check${config.storeId ? ` [${config.storeId}]` : ''}: ${passed} of ${cases} fixture cases passed, ${failed} failed${failed ? ' (see ssr-report/ and run repro <id>)' : ''}`)
+          console.log(flags.has('--json') ? JSON.stringify({ storeId: config.storeId, cases, passed, failed }) : `Check${config.storeId && config.storeId !== 'default' ? ` [${config.storeId}]` : ''}:${passed} of ${cases} fixture cases passed, ${failed} failed${failed ? ' (see ssr-report/ and run repro <id>)' : ''}`)
           if (result.failures.length) process.exitCode = 1 }
         else if (command === 'sync' || command === 'doctor') {
           const sitemap = flags.get('--sitemap') ?? (!inputs.length ? config.sitemap : undefined)
