@@ -8,7 +8,7 @@ Keep visitor-specific sections, including cart, account and customer-specific pr
 
 ## 2. Requirements
 
-- Node `^22.13.0 || >=24.0.0`. CI tests Node 22 and 24.
+- Node `^22.13.0 || >=24.0.0` (tested on Node 22 and 24).
 - Vite 8, Vue 3.5 and `@vitejs/plugin-vue` 6 in your existing theme project.
 - A Shopify Online Store 2.0 theme, Admin access for setup and a deployment process.
 - A committed npm lockfile and a build script that builds the SSR package outputs.
