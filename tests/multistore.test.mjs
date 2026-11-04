@@ -179,8 +179,10 @@ test('CLI requires store selection for store operations and rejects ambiguous/un
 })
 
 test('offline check defaults to every store and retains separate report identities', async () => {
+  await mkdir(join(root, 'src/islands'), { recursive: true })
+  await writeFile(join(root, 'src/islands/Placeholder.vue'), '<template><p>Public example</p></template>')
   const result = await run(['check'])
-  assert.equal(result.code, 0)
+  assert.equal(result.code, 0, result.stderr)
   const firstRuns = {}
   for (const id of ['fr', 'de']) {
     const report = JSON.parse(await readFile(join(root, 'ssr-report', id, 'report.json'), 'utf8'))
