@@ -1,0 +1,15 @@
+{%- capture props -%}{"eyebrow":{{ section.settings.eyebrow | json }},"title":{{ section.settings.title | json }},"description":{{ section.settings.description | json }},"linkLabel":{{ section.settings.link_label | json }},"linkUrl":{{ section.settings.link_url | default: '/collections/all' | json }}}{%- endcapture -%}
+{% render 'vue-island', component: 'HeroBanner', props: props %}
+{% schema %}
+{
+  "name": "Tea introduction",
+  "settings": [
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "The everyday tea shelf" },
+    { "type": "text", "id": "title", "label": "Title", "default": "A little time for tea" },
+    { "type": "textarea", "id": "description", "label": "Description", "default": "Simple loose-leaf blends for slow mornings and shared afternoons." },
+    { "type": "text", "id": "link_label", "label": "Link label", "default": "Explore the blends" },
+    { "type": "url", "id": "link_url", "label": "Link URL" }
+  ],
+  "presets": [{ "name": "Tea introduction" }]
+}
+{% endschema %}

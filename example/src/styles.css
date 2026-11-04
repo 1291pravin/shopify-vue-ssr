@@ -1,0 +1,6 @@
+:root { font-family: Georgia, serif; color: #21382b; background: #f6f4eb; }
+body { margin: 0; }
+main { max-width: 68rem; margin: auto; padding: 2rem 1.25rem 4rem; }
+vue-island { display: block; margin-bottom: 2rem; }
+button, a { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 3px solid #a65325; outline-offset: 4px; }

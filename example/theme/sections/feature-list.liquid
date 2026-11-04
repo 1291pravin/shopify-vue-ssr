@@ -1,0 +1,19 @@
+{%- capture props -%}{"title":{{ section.settings.title | json }},"introduction":{{ section.settings.introduction | json }},"note":{{ section.settings.note | json }},"features":[{%- for block in section.blocks -%}{"title":{{ block.settings.title | json }},"description":{{ block.settings.description | json }}}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}]}{%- endcapture -%}
+{% render 'vue-island', component: 'FeatureList', props: props %}
+{% schema %}
+{
+  "name": "Tea features",
+  "settings": [
+    { "type": "text", "id": "title", "label": "Title", "default": "Make a small ritual" },
+    { "type": "richtext", "id": "introduction", "label": "Introduction", "default": "<p>Choose a cup, warm the water and take a moment.</p>" },
+    { "type": "text", "id": "note", "label": "Optional note" }
+  ],
+  "blocks": [
+    { "type": "feature", "name": "Feature", "settings": [
+      { "type": "text", "id": "title", "label": "Title", "default": "Easy to brew" },
+      { "type": "textarea", "id": "description", "label": "Description", "default": "Use the brewing guide on each blend." }
+    ] }
+  ],
+  "presets": [{ "name": "Tea features", "blocks": [{ "type": "feature" }] }]
+}
+{% endschema %}

@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Rendering",
+    "settings": [
+      { "type": "checkbox", "id": "ssr_enabled", "label": "Enable SSR cache", "default": true }
+    ]
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "sections": {
+    "hero": { "type": "hero-banner", "settings": {} },
+    "features": {
+      "type": "feature-list",
+      "settings": {},
+      "blocks": {
+        "brew": { "type": "feature", "settings": { "title": "Brew your way", "description": "Enjoy a pot to share or a single quiet cup." } },
+        "choose": { "type": "feature", "settings": { "title": "Find your blend", "description": "Start with a bright green tea or a mellow herbal infusion." } }
+      },
+      "block_order": ["brew", "choose"]
+    },
+    "faq": {
+      "type": "faq-accordion",
+      "settings": {},
+      "blocks": { "storage": { "type": "question", "settings": {} } },
+      "block_order": ["storage"]
+    }
+  },
+  "order": ["hero", "features", "faq"]
+}

@@ -1,0 +1,9 @@
+{
+  "title": "Make a small ritual",
+  "introduction": "<p>Choose a cup, warm the water and <strong>take a moment</strong>.</p>",
+  "features": [
+    { "title": "Brew your way", "description": "Enjoy a pot to share or a single quiet cup." },
+    { "title": "Find your blend", "description": "Start with a bright green tea or a mellow herbal infusion." }
+  ],
+  "note": "Let each blend guide your brewing time."
+}

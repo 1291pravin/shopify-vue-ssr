@@ -1,0 +1,17 @@
+{
+  "name": "shopify-vue-ssr-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "shopify-vue-ssr build",
+    "check": "shopify-vue-ssr check"
+  },
+  "devDependencies": {
+    "shopify-vue-ssr": "file:..",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "vite": "^8.0.0",
+    "vue": "^3.5.44",
+    "typescript": "^5.9.0"
+  }
+}

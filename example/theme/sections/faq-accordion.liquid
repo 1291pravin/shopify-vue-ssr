@@ -1,0 +1,15 @@
+{%- capture props -%}{"id":{{ section.id | json }},"title":{{ section.settings.title | json }},"items":[{%- for block in section.blocks -%}{"question":{{ block.settings.question | json }},"answer":{{ block.settings.answer | json }}}{%- unless forloop.last -%},{%- endunless -%}{%- endfor -%}]}{%- endcapture -%}
+{% render 'vue-island', component: 'FaqAccordion', props: props %}
+{% schema %}
+{
+  "name": "Tea questions",
+  "settings": [{ "type": "text", "id": "title", "label": "Title", "default": "Before you put the kettle on" }],
+  "blocks": [
+    { "type": "question", "name": "Question", "settings": [
+      { "type": "text", "id": "question", "label": "Question", "default": "How should I store loose-leaf tea?" },
+      { "type": "textarea", "id": "answer", "label": "Answer", "default": "Keep it in a sealed container away from light and moisture." }
+    ] }
+  ],
+  "presets": [{ "name": "Tea questions", "blocks": [{ "type": "question" }] }]
+}
+{% endschema %}

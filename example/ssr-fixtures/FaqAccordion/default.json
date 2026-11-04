@@ -1,0 +1,8 @@
+{
+  "id": "tea-faq",
+  "title": "Before you put the kettle on",
+  "items": [
+    { "question": "How should I store loose-leaf tea?", "answer": "Keep it in a sealed container away from light and moisture." },
+    { "question": "Can I brew a second cup?", "answer": "Many leaves can be steeped again. Adjust the time to your taste." }
+  ]
+}
