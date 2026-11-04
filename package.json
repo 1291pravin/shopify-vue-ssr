@@ -1,0 +1,56 @@
+{
+  "name": "shopify-vue-ssr",
+  "version": "0.1.0",
+  "description": "Verified, content-addressed Vue islands for Shopify Liquid themes",
+  "license": "MIT",
+  "repository": "github:1291pravin/shopify-vue-ssr",
+  "files": [
+    "src",
+    "templates",
+    "README.md",
+    "AGENTS.md",
+    "docs",
+    "LICENSE"
+  ],
+  "type": "module",
+  "bin": {
+    "shopify-vue-ssr": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/plugin.d.ts",
+      "default": "./src/plugin.mjs"
+    },
+    "./client": {
+      "types": "./src/client.d.ts",
+      "default": "./src/client.mjs"
+    },
+    "./server": {
+      "types": "./src/server.d.ts",
+      "default": "./src/server.mjs"
+    },
+    "./key": "./src/key.mjs",
+    "./sync": "./src/sync.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "node --check src/cli.mjs"
+  },
+  "peerDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "vite": "^8.0.0",
+    "vue": "^3.5.0"
+  },
+  "dependencies": {
+    "@jridgewell/remapping": "^2.3.5",
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "@vue/server-renderer": "^3.5.44",
+    "jsdom": "^29.1.1",
+    "magic-string": "^0.30.21",
+    "parse5": "^8.1.0",
+    "tinyglobby": "^0.2.17"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  }
+}

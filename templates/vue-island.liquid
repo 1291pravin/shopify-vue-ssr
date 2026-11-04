@@ -1,0 +1,17 @@
+{% doc %}
+  @param {string} component - Registered Vue component name.
+  @param {string} props - Single line captured props JSON.
+{% enddoc %}
+{%- capture build_id -%}{%- render 'ssr-build-id' -%}{%- endcapture -%}
+{%- capture json_less_than -%}\u003c{%- endcapture -%}
+{%- assign props = props | replace: '<', json_less_than -%}
+{%- assign key = build_id | append: '|' | append: component | append: '|' | append: props | md5 -%}
+{%- assign fragment = metaobjects.ssr_fragment[key] -%}
+<vue-island data-component="{{ component | escape }}" data-ssr-key="{{ key }}" data-ssr-build="{{ build_id }}">
+  <script type="application/json" data-props>{{- props -}}</script>
+  {%- if settings.ssr_enabled and fragment.html.value != blank and fragment.component.value == component -%}
+    <div data-ssr-root data-ssr="1">{{- fragment.html.value -}}</div>
+  {%- else -%}
+    <div data-ssr-root data-ssr-miss="{{ key }}"></div>
+  {%- endif -%}
+</vue-island>

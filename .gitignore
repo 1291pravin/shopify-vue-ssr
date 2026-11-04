@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist-ssr/
+ssr-report/
+.ssr-tmp/
+*.tgz
+.env
+.env.*
+example/theme/assets/ssr-client.*
+example/theme/snippets/
