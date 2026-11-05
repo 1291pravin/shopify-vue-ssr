@@ -32,7 +32,7 @@ async function captureProps(config, captured) {
   }
 }
 
-export async function prerender(inputs, config, { dryRun = false, cleanup = false, theme, limit, concurrency = 4,
+export async function prerender(inputs, config, { dryRun = false, cleanup = false, theme, limit, concurrency = 2,
   passwordEnv = 'SHOPIFY_STOREFRONT_PASSWORD', env = process.env, reader = createPageReader({ password: env[passwordEnv] ?? '' }), verify = renderAndVerify,
   admin, cleanupCache = prune, log = console.log } = {}) {
   if (!inputs.length) throw new Error('prerender needs a site URL or saved .html files')

@@ -28,7 +28,7 @@ export const commands = {
     '--dry-run': [null, 'false', 'Render, verify and write local reports/props; do not change cache data.'],
     '--cleanup': [null, 'false', 'Run guarded cache cleanup after a successful crawl; dry-run previews deletions.'],
     '--limit': ['N', 'all pages', 'Positive maximum number of pages; partial crawls cannot authorize stale-content deletion.'],
-    '--concurrency': ['N', '4', 'Positive maximum number of pages processed concurrently.'],
+    '--concurrency': ['N', '2', 'Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits.'],
   } },
   check: { usage: '', description: 'Re-render and hydrate saved real props plus optional fixtures. No props is a successful first run.', flags: {
     '--store': ['ID', 'all configured stores', 'Narrow the offline checks and report namespace to one store.'],

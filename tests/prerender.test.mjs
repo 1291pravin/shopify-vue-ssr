@@ -266,3 +266,17 @@ test('command help matches README flags and defaults exactly and removed command
   assert.throws(() => parseArgs('build', ['--cleanup']), /Unknown option/)
   assert.throws(() => parseArgs('setup', ['--timeout']), /Missing value/)
 })
+
+test('storefront 429 is retried with backoff before failing', async () => {
+  const { createPageReader } = await import('../src/pages.mjs')
+  const waits = []
+  let calls = 0
+  const reader = createPageReader({ password: '', pause: async ms => { waits.push(ms) }, fetcher: async () => ++calls < 3
+    ? new Response('', { status: 429, headers: { 'retry-after': '5' } })
+    : new Response('<html><body>ok</body></html>', { status: 200 }) })
+  assert.match(await reader('https://example.com/products/tea'), /ok/)
+  assert.deepEqual(waits, [5000, 5000])
+
+  const always = createPageReader({ password: '', retries: 2, pause: async () => {}, fetcher: async () => new Response('', { status: 429 }) })
+  await assert.rejects(always('https://example.com/'), /rate limited \(HTTP 429\) after 2 retries.*--concurrency/)
+})

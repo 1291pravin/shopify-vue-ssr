@@ -79,12 +79,22 @@ const passwordPage = html => Boolean(passwordForm(html))
 const challengePage = html => /<title[^>]*>[^<]*(?:challenge|just a moment)|id=["'](?:challenge-form|captcha_form)|action=["'][^"']*\/challenge/i.test(html)
 const gateError = reason => new Error(`${reason}. Set SHOPIFY_STOREFRONT_PASSWORD (or --password-env NAME). If login is blocked by a challenge, use saved .html files with prerender.`)
 
-export function createPageReader({ fetcher = fetch, password = process.env.SHOPIFY_STOREFRONT_PASSWORD } = {}) {
+const USER_AGENT = 'shopify-vue-ssr (+https://github.com/1291pravin/shopify-vue-ssr)'
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+export function createPageReader({ fetcher = fetch, password = process.env.SHOPIFY_STOREFRONT_PASSWORD, pause = sleep, retries = 6 } = {}) {
   const jar = new CookieJar(), logins = new Map()
-  async function request(url, options = {}, redirects = 0) {
+  async function request(url, options = {}, redirects = 0, attempt = 0) {
     if (redirects > 8) throw new Error('Too many storefront redirects')
     const cookie = await jar.getCookieString(url)
-    const response = await fetcher(url, { ...options, redirect: 'manual', headers: { ...options.headers, ...(cookie ? { Cookie: cookie } : {}) } })
+    const response = await fetcher(url, { ...options, redirect: 'manual', headers: { 'User-Agent': USER_AGENT, ...options.headers, ...(cookie ? { Cookie: cookie } : {}) } })
+    // Shopify rate-limits fast crawls: wait (Retry-After or exponential backoff) and try again before giving up.
+    if ([429, 503].includes(response.status) && attempt < retries) {
+      await response.body?.cancel?.()
+      const retryAfter = Number(response.headers.get('retry-after')) || 0
+      await pause(Math.min(60_000, Math.max(retryAfter * 1000, 2000 * 2 ** attempt)))
+      return request(url, options, redirects, attempt + 1)
+    }
     for (const value of response.headers.getSetCookie?.() ?? []) await jar.setCookie(value, url)
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const next = new URL(response.headers.get('location'), url)
@@ -93,7 +103,8 @@ export function createPageReader({ fetcher = fetch, password = process.env.SHOPI
     }
     const html = await response.text()
     if (challengePage(html)) throw gateError('Storefront challenge page cannot be authenticated automatically')
-    if ([403, 429].includes(response.status)) throw gateError(`Storefront access blocked (HTTP ${response.status})`)
+    if (response.status === 429) throw new Error(`Storefront rate limited (HTTP 429) after ${retries} retries: ${url}. Lower --concurrency (for example 1) or run again later.`)
+    if (response.status === 403) throw gateError(`Storefront access blocked (HTTP ${response.status})`)
     if (!response.ok) throw new Error(`Fetch HTTP ${response.status}: ${url}`)
     return html
   }

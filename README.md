@@ -225,7 +225,7 @@ npx shopify-vue-ssr prerender https://example.com --limit 10 --dry-run
 | `--dry-run` | false | Render, verify and write local reports/props; do not change cache data. |
 | `--cleanup` | false | Run guarded cache cleanup after a successful crawl; dry-run previews deletions. |
 | `--limit <N>` | all pages | Positive maximum number of pages; partial crawls cannot authorize stale-content deletion. |
-| `--concurrency <N>` | 4 | Positive maximum number of pages processed concurrently. |
+| `--concurrency <N>` | 2 | Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits. |
 | `--root <DIR>` | . | Project directory. |
 | `--config <PATH>` | Vite discovery | Vite config path relative to root. |
 | `--help` | false | Show command help without loading a project. |

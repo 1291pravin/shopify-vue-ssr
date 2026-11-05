@@ -67,7 +67,12 @@ export function createTokenSource(store, { fetcher = fetch, now = () => Date.now
         body: new URLSearchParams({ grant_type: 'client_credentials', client_id: selected.clientId, client_secret: selected.clientSecret }),
       })
       if (!response.ok) {
-        throw Object.assign(new Error(`Token request failed: HTTP ${response.status}. The app and the store must be in the same Shopify organization, and the app must be installed on the store.`), { status: response.status })
+        // The body carries Shopify's reason (for example shop_not_permitted); it never contains our secret.
+        const text = (await response.text().catch(() => '')).slice(0, 500)
+        let code = ''
+        try { const parsed = JSON.parse(text); code = String(parsed.error ?? parsed.errors ?? '') } catch { code = (text.match(/[a-z]+(?:_[a-z]+)+/) ?? [''])[0] }
+        const retryAfter = Number(response.headers?.get?.('retry-after')) || 0
+        throw Object.assign(new Error(`Token request failed: HTTP ${response.status}${code ? ` (${code})` : ''}. The app and the store must be in the same Shopify organization, and the app must be installed on the store.`), { status: response.status, code, retryAfter })
       }
       const body = await response.json()
       if (!body.access_token) throw new Error(`Token request for ${store} returned no access token`)

@@ -55,16 +55,22 @@ export async function waitForInstallation(store, credentials, { timeout = 600, f
   const deadline = now() + timeout * 1000
   const bounded = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(timeout * 1000)])
   const token = createTokenSource(store, { fetcher, env: { SHOPIFY_CLIENT_ID: credentials.clientId, SHOPIFY_CLIENT_SECRET: credentials.clientSecret }, signal: bounded })
-  let attempt = 0
+  let attempt = 0, interval = 15_000
   while (now() < deadline) {
     bounded.throwIfAborted()
     try { await token(); log('App installation verified.'); return }
     catch (error) {
       if (bounded.aborted) { if (signal?.aborted) signal.throwIfAborted(); break }
-      // Never print response bodies or CLI environment output containing secrets.
+      // Retrying cannot fix these: stop at once and say what to change.
+      if (error.code === 'shop_not_permitted') throw new Error(`Shopify refused the token for ${store} (shop_not_permitted): the app and the store are in different Shopify organizations. Create the app from the Dev Dashboard of the organization that owns the store, install it there, then rerun setup.`)
+      if (error.code === 'invalid_client') throw new Error(`Shopify rejected the app credentials for ${store} (invalid_client). Check that the client ID and secret belong to this app (shopify app env show), then rerun setup.`)
       if (error.status && ![400, 401, 403, 429].includes(error.status) && error.status < 500) throw error
-      log(`Waiting for installation on ${store} (attempt ${++attempt}, ${Math.max(0, Math.ceil((deadline - now()) / 1000))}s remaining). Ctrl+C stops safely.`)
-      try { await pause(Math.min(5000, Math.max(1, deadline - now())), { signal: bounded }) }
+      const reason = error.status === 429 ? 'rate limited by Shopify' : error.status ? `HTTP ${error.status}${error.code ? ` ${error.code}` : ''}` : 'network error'
+      // Back off so polling never triggers Shopify's rate limit; honour Retry-After when given.
+      const wait = Math.min(Math.max(interval, (error.retryAfter || 0) * 1000), Math.max(1, deadline - now()))
+      log(`Waiting for installation on ${store}: ${reason} (attempt ${++attempt}, next try in ${Math.ceil(wait / 1000)}s, ${Math.max(0, Math.ceil((deadline - now()) / 1000))}s remaining). Ctrl+C stops safely.`)
+      interval = Math.min(interval * 2, 120_000)
+      try { await pause(wait, { signal: bounded }) }
       catch (error) { if (signal?.aborted) signal.throwIfAborted(); if (bounded.aborted) break; throw error }
     }
   }

@@ -88,7 +88,8 @@ test('installation timeout bounds polling and failed setup writes no secrets or 
     timeout: 10, now: () => clock, pause: async ms => { clock += ms }, log: quiet,
     fetcher: async () => { requests++; return new Response('secret response suppressed', { status: 403 }) },
   }), /timed out after 10s.*same Shopify organization/)
-  assert.equal(requests, 2); assert.equal(clock, 10000)
+  // Polling backs off from 15s, so a 10s window allows exactly one request.
+  assert.equal(requests, 1); assert.equal(clock, 10000)
   await assert.rejects(setupProject(config, { env: {}, skipApp: true, timeout: 0, admin, log: quiet }), /positive integer/)
   assert.equal(await exists(join(root, '.env')), false)
 }))
@@ -184,3 +185,19 @@ test('actual setup CLI launches a mocked interactive Shopify CLI and mocked Admi
   assert.equal(calls.length, 3)
   assert.equal(parseEnv(await readFile(join(root, '.env'), 'utf8')).SHOPIFY_CLIENT_SECRET, 'mock-cli-secret')
 }))
+
+test('installation polling stops at once on shop_not_permitted and backs off on 429', async () => {
+  let requests = 0
+  await assert.rejects(waitForInstallation('your-store.myshopify.com', { clientId: 'mock-id', clientSecret: 'mock-secret' }, {
+    log: quiet, pause: async () => {}, fetcher: async () => { requests++; return Response.json({ error: 'shop_not_permitted' }, { status: 400 }) },
+  }), /different Shopify organizations/)
+  assert.equal(requests, 1)
+
+  let clock = 0, calls = 0
+  const waits = []
+  await waitForInstallation('your-store.myshopify.com', { clientId: 'mock-id', clientSecret: 'mock-secret' }, {
+    timeout: 600, log: quiet, now: () => clock, pause: async ms => { waits.push(ms); clock += ms },
+    fetcher: async () => ++calls < 3 ? new Response('', { status: 429, headers: { 'retry-after': '40' } }) : Response.json({ access_token: 'mock-token', expires_in: 86399 }),
+  })
+  assert.deepEqual(waits, [40000, 40000])
+})
