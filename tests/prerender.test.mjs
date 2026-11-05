@@ -270,7 +270,8 @@ test('cleanup protects recent themes beyond keepBuilds, expires old theme observ
 })
 
 test('command help matches README flags and defaults exactly and removed commands/foreign flags are rejected', async () => {
-  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8')
+  // Windows checkouts may convert to CRLF; compare on LF.
+  const readme = (await readFile(new URL('../README.md', import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
   for (const command of Object.keys(commands)) {
     const section = readme.split(`### ${command}\n`)[1].split('\n### ')[0].split('\n## ')[0]
     const lines = help(command).split('\n')

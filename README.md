@@ -227,6 +227,22 @@ sync and `defineAsyncComponent` values, and warns for missing names. It does not
 invoke loaders. Async roots work for both hydration and client rendering. Server
 and verification builds keep using the plugin's static virtual registry.
 
+### When hydration does not match
+
+`mountIslands({ registry, onMismatch })` decides what happens when the stored HTML
+differs from what the browser renders, for example a header whose real props carry
+a cart count of 3 while the stored fragment shows 0:
+
+| `onMismatch` | Behaviour |
+| --- | --- |
+| `'keep'` (default) | Stay hydrated. Vue patches the differing text and the island keeps working; the mismatch is logged in `window.__ssr.mismatches` and reported. |
+| `'remount'` | Discard the stored HTML and render the island again in the browser with the same props. Guarantees the client output, at the cost of a brief redraw. |
+
+An island that throws while hydrating is always remounted in the browser, whatever
+the setting. Remounted islands appear in `window.__ssr.csr` with `recovered: true`
+and their root gets `data-ssr-recovered="1"`. Note that Vue does not fix mismatched
+attributes (such as `class`) in production; use `'remount'` if an island depends on them.
+
 ### Theme tooling in nested builds
 
 Server and verification builds automatically skip the plugins that write into the

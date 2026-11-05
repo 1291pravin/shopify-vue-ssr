@@ -128,3 +128,80 @@ test('reporter failures never stop valid islands; theme editor load and unload w
     assert.equal(added.querySelector('p'), null)
   } finally { runtime.destroy(); document.body.innerHTML = '' }
 })
+
+test('by default a plain mismatch stays hydrated: Vue patches it and the island keeps working', async () => {
+  const originalWarn = console.warn, originalError = console.error
+  console.warn = () => {}; console.error = () => {}
+  const Cart = defineComponent({ props: ['count'], setup(props) {
+    const count = ref(props.count)
+    return () => h('button', { class: 'cart', onClick: () => count.value++ }, `Cart ${count.value}`)
+  } })
+  const node = element({ component: 'Cart', props: '{"count":3}', hit: true })
+  node.querySelector('[data-ssr-root]').innerHTML = '<button class="cart">Cart 0</button>'
+  const button = node.querySelector('button')
+  window.__ssr = { hydrated: [], csr: [], mismatches: [] }
+  const runtime = mountIslands({ registry: { Cart }, observe: false })
+  try {
+    assert.equal(node.querySelector('button'), button)
+    assert.equal(button.textContent, 'Cart 3')
+    assert.equal(window.__ssr.hydrated.length, 1)
+    assert.ok(window.__ssr.mismatches.length >= 1)
+    button.click(); await nextTick()
+    assert.equal(button.textContent, 'Cart 4')
+  } finally { runtime.destroy(); console.warn = originalWarn; console.error = originalError; document.body.innerHTML = '' }
+})
+
+test('an island that breaks while hydrating is always remounted on the client', () => {
+  const originalWarn = console.warn, originalError = console.error
+  console.warn = () => {}; console.error = () => {}
+  let calls = 0
+  // Throws only on the first (hydrating) setup, like code that trips over server HTML.
+  const Flaky = defineComponent({ setup() { if (calls++ === 0) throw new Error('hydration broke'); return () => h('p', 'client') } })
+  const node = element({ component: 'Flaky', hit: true })
+  window.__ssr = { hydrated: [], csr: [], mismatches: [] }
+  const runtime = mountIslands({ registry: { Flaky }, observe: false })
+  try {
+    assert.equal(node.querySelector('[data-ssr-root]').textContent, 'client')
+    assert.deepEqual(window.__ssr.csr, [{ component: 'Flaky', key: 'a'.repeat(32), recovered: true }])
+  } finally { runtime.destroy(); console.warn = originalWarn; console.error = originalError; document.body.innerHTML = '' }
+})
+
+test('onMismatch remount discards the stored HTML and remounts the island on the client', async () => {
+  const originalWarn = console.warn, originalError = console.error
+  console.warn = () => {}; console.error = () => {}
+  // Session-varying props: the stored fragment says 0, the visitor's real props say 3.
+  const Cart = defineComponent({ props: ['count'], setup(props) {
+    const count = ref(props.count)
+    return () => h('button', { class: 'cart', onClick: () => count.value++ }, `Cart ${count.value}`)
+  } })
+  const node = element({ component: 'Cart', props: '{"count":3}', hit: true })
+  node.querySelector('[data-ssr-root]').innerHTML = '<button class="cart">Cart 0</button>'
+  window.__ssr = { hydrated: [], csr: [], mismatches: [] }
+  const events = []
+  const runtime = mountIslands({ registry: { Cart }, consent: () => true, reporter: callbackReporter(event => events.push(event)), observe: false, onMismatch: 'remount' })
+  try {
+    const root = node.querySelector('[data-ssr-root]')
+    assert.equal(root.textContent, 'Cart 3')
+    assert.equal(root.querySelectorAll('button').length, 1)
+    assert.equal(root.dataset.ssrRecovered, '1')
+    assert.deepEqual(window.__ssr.hydrated, [])
+    assert.deepEqual(window.__ssr.csr, [{ component: 'Cart', key: 'a'.repeat(32), recovered: true }])
+    assert.ok(window.__ssr.mismatches.length >= 1)
+    assert.ok(events.some(event => event.type === 'hydration-mismatch'))
+    root.querySelector('button').click(); await nextTick()
+    assert.equal(root.textContent, 'Cart 4')
+  } finally { runtime.destroy(); console.warn = originalWarn; console.error = originalError; document.body.innerHTML = '' }
+})
+
+test('a matching fragment stays hydrated without a remount', () => {
+  const node = element({ hit: true })
+  node.querySelector('[data-ssr-root]').innerHTML = '<p>expected</p>'
+  const paragraph = node.querySelector('p')
+  window.__ssr = { hydrated: [], csr: [], mismatches: [] }
+  const runtime = mountIslands({ registry: { Good }, observe: false })
+  try {
+    assert.equal(node.querySelector('p'), paragraph)
+    assert.equal(window.__ssr.hydrated.length, 1)
+    assert.equal(window.__ssr.csr.length, 0)
+  } finally { runtime.destroy(); document.body.innerHTML = '' }
+})

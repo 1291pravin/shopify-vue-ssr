@@ -17,7 +17,8 @@ export const dataLayerReporter = (eventName = 'ssr_problem') => event => {
   (window.dataLayer ??= []).push({ event: eventName, ...event })
 }
 
-export function mountIslands({ registry, scope = document, consent = () => false, reporter, page = 'storefront', observe = true } = {}) {
+export function mountIslands({ registry, scope = document, consent = () => false, reporter, page = 'storefront', observe = true, onMismatch = 'keep' } = {}) {
+  if (!['keep', 'remount'].includes(onMismatch)) throw new Error('onMismatch must be "keep" or "remount"')
   const apps = new Map()
   window.__ssr ??= { hydrated: [], csr: [], mismatches: [] }
   let active
@@ -29,7 +30,7 @@ export function mountIslands({ registry, scope = document, consent = () => false
   }
   const record = (message, type = 'hydration-mismatch') => {
     window.__ssr.mismatches.push(`${active?.name ?? 'island'}: ${message}`)
-    if (active) report(type, active.name, active.key)
+    if (active) { report(type, active.name, active.key); if (type === 'hydration-mismatch') active.mismatched = true }
   }
   const originals = {}
   for (const method of ['warn', 'error']) {
@@ -46,7 +47,7 @@ export function mountIslands({ registry, scope = document, consent = () => false
     for (const island of islands) {
       if (apps.has(island)) continue
       const name = island.dataset.component ?? '', key = island.dataset.ssrKey ?? ''
-      active = { name, key }
+      const state = active = { name, key, mismatched: false }
       let app
       try {
         const root = island.querySelector(':scope > [data-ssr-root]')
@@ -58,20 +59,37 @@ export function mountIslands({ registry, scope = document, consent = () => false
         if (!props || typeof props !== 'object' || Array.isArray(props)) throw new Error('Island props must be a JSON object')
         if (!Object.hasOwn(registry, name)) throw new Error(`Unknown island component: ${name}`)
         const hydrate = root.dataset.ssr === '1'
-        app = (hydrate ? createSSRApp : createApp)(registry[name], props)
-        app.config.warnHandler = message => {
-          if (/hydration|mismatch/i.test(message)) {
-            window.__ssr.mismatches.push(`${name}: ${message}`)
-            report('hydration-mismatch', name, key)
-            originals.warn(message)
-          }
-        }
         let failed = false
-        app.config.errorHandler = error => { failed = true; window.__ssr.mismatches.push(`${name}: ${String(error)}`); report('mount-error', name, key) }
-        app.mount(root)
+        const start = factory => {
+          const instance = factory(registry[name], props)
+          instance.config.warnHandler = message => {
+            if (/hydration|mismatch/i.test(message)) {
+              window.__ssr.mismatches.push(`${name}: ${message}`)
+              report('hydration-mismatch', name, key)
+              state.mismatched = true
+              originals.warn(message)
+            }
+          }
+          instance.config.errorHandler = error => { failed = true; window.__ssr.mismatches.push(`${name}: ${String(error)}`); report('mount-error', name, key) }
+          instance.mount(root)
+          return instance
+        }
+        app = start(hydrate ? createSSRApp : createApp)
+        // A plain mismatch (for example a cart count that differs) is patched by Vue and the island keeps
+        // working, so by default it stays hydrated. If hydration broke the island, or onMismatch is
+        // 'remount', the stored HTML is discarded and the island renders again in the browser with the same props.
+        let recovered = false
+        if (hydrate && (failed || (state.mismatched && onMismatch === 'remount'))) {
+          app.unmount()
+          root.textContent = ''
+          failed = false
+          app = start(createApp)
+          recovered = true
+        }
         if (failed) { app.unmount(); continue }
         apps.set(island, app)
-        window.__ssr[hydrate ? 'hydrated' : 'csr'].push({ component: name, key })
+        if (recovered) root.dataset.ssrRecovered = '1'
+        window.__ssr[hydrate && !recovered ? 'hydrated' : 'csr'].push(recovered ? { component: name, key, recovered: true } : { component: name, key })
       } catch (error) { record(error.message, 'mount-error'); if (error.type === 'invalid-props') originals.error(`[SSR] ${error.message}`); app?.unmount() }
       finally { active = undefined }
     }
