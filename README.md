@@ -405,6 +405,11 @@ after-totals. Review `prune.json` and the cleanup section of `summary.md`.
 nonzero. `repro` replays existing cases and exits nonzero if a failure remains.
 No props yet is a successful `check` with a hint to run prerender.
 
+After updating this package, run `npx shopify-vue-ssr setup --skip-app` (with
+`--store <id>` for multi-store configs) once per store. It adds any new fields to
+the existing definitions without touching cached entries. If you skip it,
+`prerender` stops with a message telling you to run it.
+
 | Signal/file | Meaning |
 | --- | --- |
 | `window.__ssr` | Browser arrays `{ hydrated, csr, mismatches }`; misses render in the browser. |

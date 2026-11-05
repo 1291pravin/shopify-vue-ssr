@@ -151,10 +151,20 @@ export async function ensureDefinition(admin) {
   return { created: true, id: payload.metaobjectDefinition.id }
 }
 
+// A store set up by an older version lacks newer fields; say how to upgrade instead of surfacing a raw Admin API error.
+function upsertError(payload, type) {
+  const errors = payload?.userErrors ?? []
+  if (errors.some(error => ['UNDEFINED_OBJECT_FIELD', 'UNDEFINED_OBJECT_TYPE', 'OBJECT_FIELD_REQUIRED'].includes(error.code))) {
+    const detail = errors.map(error => error.message).join('; ')
+    return new Error(`The ${type} definition on this store is missing or outdated (${detail}). Run "npx shopify-vue-ssr setup --skip-app" once (add --store <id> for multi-store configs) to upgrade the definitions, then rerun prerender.`)
+  }
+  return new Error(JSON.stringify(errors.length ? errors : payload))
+}
+
 export async function upsertFragment(admin, { key, name, html, build }) {
   if (!build) throw new Error('Fragment requires a build id')
   const payload = (await admin(operations.upsert, { key, name, html, build }, true)).metaobjectUpsert
-  if (!payload?.metaobject?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
+  if (!payload?.metaobject?.id || payload.userErrors?.length) throw upsertError(payload, 'ssr_fragment')
   return payload.metaobject
 }
 
@@ -188,6 +198,6 @@ export async function touchBuild(admin, buildId, now = Date.now(), themeId) {
     fields.push({ key: 'themes', value: JSON.stringify(themes) })
   }
   const payload = (await admin(operations.upsertBuild, { handle, metaobject: { fields } }, true)).metaobjectUpsert
-  if (!payload?.metaobject?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
+  if (!payload?.metaobject?.id || payload.userErrors?.length) throw upsertError(payload, 'ssr_build')
   return payload.metaobject
 }
