@@ -62,7 +62,14 @@ export function shopifyVueSsr(options = {}) {
         if (server) config.ssr = { ...config.ssr, external: [], noExternal: true }
       },
     },
-    configResolved(config) { root = config.root },
+    configResolved(config) {
+      root = config.root
+      if (config.shopifyVueSsrBuild?.kind !== 'verify') return
+      const vue = config.plugins.find(plugin => plugin.name === 'vite:vue')
+      // Only warn for an explicit, inspectable option. Custom compilers and
+      // defaults can vary; the shared-config recommendation also covers them.
+      if (vue?.api?.options?.template?.compilerOptions?.comments === true) config.logger.warn('SSR: Vue template comments are enabled. Use vue({ template: { compilerOptions: { comments: false } } }) in the shared Vite config for server/client parity.')
+    },
     resolveId(id) { if (id === 'virtual:shopify-vue-ssr/islands') return '\0' + id },
     async load(id) {
       if (id !== '\0virtual:shopify-vue-ssr/islands') return

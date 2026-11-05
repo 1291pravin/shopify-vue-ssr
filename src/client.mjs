@@ -1,5 +1,14 @@
 import { createApp, createSSRApp } from 'vue'
 
+export function createIslandRegistry(names, components, { warn = console.warn } = {}) {
+  const registry = Object.create(null)
+  for (const name of names) {
+    if (Object.hasOwn(components, name) && components[name]) registry[name] = components[name]
+    else warn(`SSR island "${name}" is not registered in the components map`)
+  }
+  return registry
+}
+
 // Only fixed messages and route templates leave the browser. Never send Vue's
 // raw warning text, props, DOM contents, URL queries, hashes, or error objects.
 export const consoleReporter = event => console.warn('[SSR]', event)
@@ -43,7 +52,9 @@ export function mountIslands({ registry, scope = document, consent = () => false
         const root = island.querySelector(':scope > [data-ssr-root]')
         const data = island.querySelector(':scope > script[data-props]')
         if (!root || !data) throw new Error('Island root or exact props JSON is missing')
-        const props = JSON.parse(data.textContent ?? '')
+        let props
+        try { props = JSON.parse(data.textContent ?? '') }
+        catch (error) { throw Object.assign(new Error(`Invalid props JSON for island "${name}" on ${window.location.href}: ${error.message}`), { type: 'invalid-props' }) }
         if (!props || typeof props !== 'object' || Array.isArray(props)) throw new Error('Island props must be a JSON object')
         if (!Object.hasOwn(registry, name)) throw new Error(`Unknown island component: ${name}`)
         const hydrate = root.dataset.ssr === '1'
@@ -61,7 +72,7 @@ export function mountIslands({ registry, scope = document, consent = () => false
         if (failed) { app.unmount(); continue }
         apps.set(island, app)
         window.__ssr[hydrate ? 'hydrated' : 'csr'].push({ component: name, key })
-      } catch (error) { record(error.message, 'mount-error'); app?.unmount() }
+      } catch (error) { record(error.message, 'mount-error'); if (error.type === 'invalid-props') originals.error(`[SSR] ${error.message}`); app?.unmount() }
       finally { active = undefined }
     }
   }

@@ -16,6 +16,8 @@ export function normalizeOptions(options, root) {
   const config = { islands: 'src/islands/**/*.vue', widths: [375, 1440], themeDir: 'theme', fixturesDir: 'ssr-fixtures', reportDir: 'ssr-report', outDir: 'dist-ssr', client: { entry: 'src/client.ts' }, ...options, root }
   for (const key of ['themeDir', 'fixturesDir', 'reportDir', 'outDir']) config[key] = resolve(root, config[key])
   config.prune = pruneOptions(options.prune)
+  if (options.nestedBuild !== undefined && (!options.nestedBuild || typeof options.nestedBuild !== 'object' || Array.isArray(options.nestedBuild) ||
+    (options.nestedBuild.excludePlugins !== undefined && (!Array.isArray(options.nestedBuild.excludePlugins) || options.nestedBuild.excludePlugins.some(rule => !(typeof rule === 'string' && rule) && !(rule instanceof RegExp)))))) throw new Error('nestedBuild.excludePlugins must be an array of nonempty plugin names or RegExp patterns')
   if (!Array.isArray(config.widths) || !config.widths.length || config.widths.some(w => !Number.isInteger(w) || w < 1)) throw new Error('widths must be positive integer viewport widths')
   if (config.client !== false && (!config.client || typeof config.client.entry !== 'string' || !config.client.entry)) throw new Error('client must be false or { entry: "src/client.ts" }')
   config.reportBaseDir = config.reportDir

@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { build } from 'vite'
 import { resolveIslands, shopifyVueSsr } from '../src/plugin.mjs'
-import { loadConfig } from '../src/config.mjs'
+import { loadConfig, normalizeOptions } from '../src/config.mjs'
 import { renderAndVerify } from '../src/verify.mjs'
 
 const exec = promisify(execFile)
@@ -91,6 +91,62 @@ test('ordinary Vite builds receive no package build overrides', async () => {
   const original = JSON.stringify(user)
   plugin.config.handler(user)
   assert.equal(JSON.stringify(user), original)
+})
+test('nested plugin exclusion rules validate names and RegExp patterns', () => {
+  for (const nestedBuild of [null, [], { excludePlugins: 'clean' }, { excludePlugins: [42] }, { excludePlugins: [''] }]) {
+    assert.throws(() => normalizeOptions({ nestedBuild }, root), /nestedBuild.excludePlugins/)
+  }
+  assert.deepEqual(normalizeOptions({ nestedBuild: { excludePlugins: ['custom-clean', /^theme-/g] } }, root).nestedBuild.excludePlugins, ['custom-clean', /^theme-/g])
+})
+test('server and verify skip theme tooling before all hooks; client and normal builds retain it', { timeout: 120000 }, async () => {
+  const pluginNames = ['vite-plugin-shopify', 'vite-plugin-shopify-config', 'vite-plugin-shopify-html', 'vite-plugin-shopify:liquid-tailwind-refresh', 'vite-plugin-shopify:react-refresh', 'vite-plugin-shopify-clean', 'custom-clean', 'theme-writer-one', 'theme-writer-two']
+  await put('src/nested-client.ts', `import { mountIslands } from 'shopify-vue-ssr/client'; import { registry } from 'virtual:shopify-vue-ssr/islands'; mountIslands({ registry })`)
+  await put('nested-theme/assets/keep.js', 'existing-theme-asset')
+  await put('nested.vite.ts', `import vue from '@vitejs/plugin-vue'
+import { shopifyVueSsr } from 'shopify-vue-ssr'
+import { appendFileSync, unlinkSync } from 'node:fs'
+import { join } from 'node:path'
+function tooling(name) {
+  let kind = 'normal'
+  const record = hook => {
+    appendFileSync(join(import.meta.dirname, 'hook-calls.jsonl'), JSON.stringify({ name, kind, hook }) + '\\n')
+    if (kind === 'server' || kind === 'verify') unlinkSync(join(import.meta.dirname, 'nested-theme/assets/keep.js'))
+  }
+  return { name, apply(config) { kind = config.shopifyVueSsrBuild?.kind ?? 'normal'; record('apply'); return true },
+    config() { record('config') }, configResolved() { record('configResolved') }, buildStart() { record('buildStart') }, writeBundle() { record('writeBundle') } }
+}
+export default ({ isSsrBuild }) => ({
+  plugins: [vue({ template: { compilerOptions: { comments: false } } }),
+    [Promise.resolve(${JSON.stringify(pluginNames)}.map(tooling))],
+    shopifyVueSsr({ islands: 'src/components/Child.vue', client: { entry: 'src/nested-client.ts' }, themeDir: 'nested-theme', outDir: 'nested-ssr',
+      nestedBuild: { excludePlugins: ['custom-clean', /^theme-writer-/g] } }),
+    { name: 'retained-proof', config(config) { if (Boolean(config.build.ssr) !== isSsrBuild) throw new Error('wrong config environment') } }],
+  build: { outDir: 'normal-tooling-output', lib: { entry: 'src/nested-client.ts', formats: ['es'] } },
+})`)
+  const built = await exec(process.execPath, [cli, 'build', '--root', root, '--config', 'nested.vite.ts'])
+  for (const kind of ['server', 'verify']) for (const name of pluginNames) assert.ok(built.stdout.includes(`SSR ${kind}: skipped plugin "${name}"`))
+  assert.equal(await readFile(join(root, 'nested-theme/assets/keep.js'), 'utf8'), 'existing-theme-asset')
+  const calls = async () => (await readFile(join(root, 'hook-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+  assert.equal((await calls()).length, pluginNames.length * 5)
+  assert.ok((await calls()).every(call => call.kind === 'client'))
+  await build({ root, configFile: join(root, 'nested.vite.ts'), logLevel: 'silent' })
+  const normal = (await calls()).filter(call => call.kind === 'normal')
+  assert.equal(normal.length, pluginNames.length * 5)
+  for (const name of pluginNames) assert.deepEqual(normal.filter(call => call.name === name).map(call => call.hook), ['apply', 'config', 'configResolved', 'buildStart', 'writeBundle'])
+})
+
+test('comment warning is limited to explicit Vue comments in package verification builds', () => {
+  const warnings = [], plugin = shopifyVueSsr()
+  const config = { root, plugins: [{ name: 'vite:vue', api: { options: { template: { compilerOptions: { comments: true } } } } }], logger: { warn: message => warnings.push(message) } }
+  plugin.configResolved(config)
+  plugin.configResolved({ ...config, shopifyVueSsrBuild: { kind: 'client' } })
+  assert.equal(warnings.length, 0)
+  plugin.configResolved({ ...config, shopifyVueSsrBuild: { kind: 'verify' } })
+  assert.match(warnings[0], /comments: false.*shared Vite config/)
+  config.plugins[0].api.options.template.compilerOptions.comments = false
+  plugin.configResolved({ ...config, shopifyVueSsrBuild: { kind: 'verify' } })
+  plugin.configResolved({ ...config, plugins: [{ name: 'vite:vue' }], shopifyVueSsrBuild: { kind: 'verify' } })
+  assert.equal(warnings.length, 1)
 })
 test('CLI --config loads TS aliases, defines, extra plugins and CSS; client false skips only client; own Vite build is preserved', { timeout: 120000 }, async () => {
   await put('src/message.ts', `import { suffix } from 'virtual:extra'; export const message = __PROJECT_LABEL__ + suffix`)

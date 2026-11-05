@@ -9,6 +9,7 @@ import { operations, touchBuild, ensureBuildDefinition } from '../src/admin.mjs'
 import { selectPrunable } from '../src/prune.mjs'
 import { buildDefinition } from './helpers/admin.mjs'
 import { commands, help, parseArgs } from '../src/cli.mjs'
+import { repro } from '../src/repro.mjs'
 
 const out = resolve(import.meta.dirname, '../out'), site = 'https://example.com'
 const quiet = () => {}
@@ -37,6 +38,26 @@ function mockAdmin() {
 }
 const good = async () => ({ ok: true, html: '<p>local render</p>' })
 const xml = urls => `<urlset>${urls.map(url => `<url><loc>${url}</loc></url>`).join('')}</urlset>`
+
+test('invalid props JSON identifies the component, page and parse error before rendering or writing, and replays offline', () => temp(async (config, buildId) => {
+  const props = '{"title":"sample",}', messages = []
+  let calls = 0, parseError
+  try { JSON.parse(props) } catch (error) { parseError = error.message }
+  const report = await prerender(['saved.html'], config, { log: message => messages.push(message), reader: async () => island(buildId, { props }),
+    admin: async () => { calls++; throw new Error('must not write') }, verify: async () => { calls++; throw new Error('must not render') } })
+  assert.equal(calls, 0)
+  const failure = report.failures[0]
+  assert.equal(failure.type, 'invalid-props')
+  assert.ok(failure.message.includes(`Invalid props JSON for island "Good" on ${join(config.root, 'saved.html')}`))
+  assert.ok(failure.message.includes(parseError))
+  assert.ok(messages.includes(failure.message))
+  assert.equal(failure.exactProps, props)
+  assert.ok((await readFile(join(config.reportDir, 'summary.md'), 'utf8')).includes('Invalid props JSON'))
+  const replay = await repro(failure.id, config)
+  assert.equal(replay.reproduced, true)
+  assert.equal(replay.type, 'invalid-props')
+  assert.equal(replay.error.message, failure.message)
+}))
 
 test('prerender expands same-host sitemap indexes, previews every page, verifies misses and records served theme ids', () => temp(async (config, buildId) => {
   const requests = [], mock = mockAdmin(), verified = []

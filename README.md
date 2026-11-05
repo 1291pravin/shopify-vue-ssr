@@ -36,7 +36,7 @@ accounts, visitor-specific prices and other private state client-rendered.
    import { shopifyVueSsr } from 'shopify-vue-ssr'
 
    export default defineConfig({
-     plugins: [vue(), shopifyVueSsr({
+     plugins: [vue({ template: { compilerOptions: { comments: false } } }), shopifyVueSsr({
        islands: 'src/islands/**/*.vue',
        client: { entry: 'src/client.ts' },
        themeDir: 'theme',
@@ -141,6 +141,33 @@ accounts, visitor-specific prices and other private state client-rendered.
    produce reports and a nonzero exit. Cache hits are skipped. Run again when
    public content changes. `check` is optional before later deployments.
 
+## Migrating sections from `<vue-app>`
+
+For an existing multiline `component_props` capture, transport its JSON on one
+line. Keep string values escaped with Liquid's `json` filter; real newlines inside
+strings must already be escaped as `\n`:
+
+```liquid
+{%- capture island_props -%}{{ component_props | strip | strip_newlines }}{%- endcapture -%}
+<div id="hero-section" data-sticky-nav-label="{{ section.settings.title | escape }}">
+  {% render 'vue-island', component: 'HeroBanner', props: island_props %}
+</div>
+```
+
+Move attributes previously on `<vue-app>`, such as ids or data attributes selected
+by navigation and other scripts, onto this wrapper or the Shopify section element.
+Add the new custom element to your shared stylesheet:
+
+```css
+vue-island { display: block; }
+```
+
+Trailing commas make the props JSON invalid. `strip | strip_newlines` removes
+whitespace; it does not repair JSON. Prerender and the client loader report the
+component, page and JSON parse error. Browser details remain in the local console
+and `window.__ssr.mismatches`; optional reporters still send fixed metadata only.
+Preserve the resulting exact JSON bytes for cache keys and hydration.
+
 ## Plugin options
 
 | Option | Default | Meaning |
@@ -148,6 +175,7 @@ accounts, visitor-specific prices and other private state client-rendered.
 | `islands` | `src/islands/**/*.vue` | Path, glob, array, or name-to-path map such as `{ HeroBanner: 'src/sections/Hero.vue' }`. Basenames supply names for paths/globs. |
 | `exclude` | `[]` | Glob exclusions; plain file paths are unaffected. |
 | `client` | `{ entry: 'src/client.ts' }` | Build fixed-name JS/CSS. `false` uses your existing client build. |
+| `nestedBuild` | `{ excludePlugins: [] }` | Additional plugin names (exact strings) or `RegExp` patterns to skip in server/verification builds. Built-in theme tooling exclusions always apply. |
 | `themeDir` | `theme` | Local destination for snippets and client assets. |
 | `widths` | `[375, 1440]` | Nonempty positive integer hydration verification widths. |
 | `store` | unset | Single `.myshopify.com` domain, store id `default`; `SHOPIFY_STORE` overrides it. |
@@ -166,11 +194,73 @@ credentials, reports, props and cache contents are isolated per store. Setup als
 saves a suffix pair for named store ids, so setting up another store retains access.
 `SHOPIFY_STORE` affects only single-store configuration.
 
-With `client: false`, keep the mounting imports in your existing entry and load its
-actual assets from Liquid. Use `"build": "vite build && shopify-vue-ssr build"` if
+With `client: false`, mount islands in your existing entry and load its actual
+assets from Liquid. Use `"build": "vite build && shopify-vue-ssr build"` if
 `vite build` owns the client output. Build and deploy both from the same commit.
-Package-owned builds preserve Vite plugins, aliases and defines while overriding
-conflicting output/SSR settings. Normal Vite builds retain their settings.
+
+If that entry already uses `import.meta.glob` and `defineAsyncComponent`, importing
+`virtual:shopify-vue-ssr/islands` there defeats lazy loading: the virtual registry
+statically imports every island, putting them in the entry/shared bundle and
+causing `INEFFECTIVE_DYNAMIC_IMPORT` warnings. Share a name-to-path map between
+your Vite config and browser entry, for example `ssr/islands.ts`:
+
+```ts
+export const islands = { HeroBanner: 'src/sections/HeroBanner.vue' }
+```
+
+Pass this map to `shopifyVueSsr({ islands, client: false })` in the Vite config.
+In the browser, select from your existing component map using the helper:
+
+```ts
+import { islands } from '../ssr/islands'
+import { components } from './components' // Existing sync/defineAsyncComponent map
+import { createIslandRegistry, mountIslands } from 'shopify-vue-ssr/client'
+
+const registry = createIslandRegistry(Object.keys(islands), components, {
+  warn: message => console.warn(message), // Optional; defaults to console.warn
+})
+mountIslands({ registry })
+```
+
+`createIslandRegistry` accepts an iterable of names and a component map, preserves
+sync and `defineAsyncComponent` values, and warns for missing names. It does not
+invoke loaders. Async roots work for both hydration and client rendering. Server
+and verification builds keep using the plugin's static virtual registry.
+
+### Theme tooling in nested builds
+
+Server and verification builds automatically skip `vite-plugin-shopify` and its
+`-`/`:` sub-plugins, including `vite-plugin-shopify-config`,
+`vite-plugin-shopify-html`, `vite-plugin-shopify:liquid-tailwind-refresh`,
+`vite-plugin-shopify:react-refresh`, and `vite-plugin-shopify-clean` (the name used
+by `@driver-digital/vite-plugin-shopify-clean`). Each skipped plugin is logged.
+This prevents nested builds from rewriting theme snippets or cleaning assets
+just produced by `vite build`. Normal and package-owned client builds retain them.
+Other plugins, aliases and defines are preserved; conflicting package output/SSR
+settings are overridden. Normal Vite builds retain their settings.
+
+Exclude other theme writers by plugin name:
+
+```ts
+shopifyVueSsr({
+  client: false,
+  nestedBuild: { excludePlugins: ['custom-theme-clean', /^theme-assets-/] },
+})
+```
+
+For plugins you control, the package exposes `config.shopifyVueSsrBuild` with
+`kind: 'server' | 'verify' | 'client'`. Gate theme writes with `apply` so they run
+only in normal/client builds:
+
+```ts
+const themeWriter = {
+  name: 'custom-theme-writer',
+  apply: config => !config.shopifyVueSsrBuild || config.shopifyVueSsrBuild.kind === 'client',
+  // Your theme-writing hooks here.
+}
+```
+
+Exclusions take effect before plugin hooks, including `apply` and `config`.
 
 ## Command reference
 
@@ -401,6 +491,15 @@ after-totals. Review `prune.json` and the cleanup section of `summary.md`.
 
 ## Troubleshooting and reports
 
+For themes using `vite-plugin-shopify`, inspect the generated `vite-tag.liquid`
+when assets look stale. Keep Shopify's `?v=` cache busting on stylesheet tags
+(`asset_url | stylesheet_tag`); removing it can leave old CSS cached even after
+uploading new contents under the same hashed filename. When JS chunks import the
+entry by bare filename, keep the JS entry, chunks and modulepreload URLs
+unversioned consistently. Adding `?v=` only to the entry creates a second module
+identity and can evaluate it twice. Apply stylesheet versioning separately from
+script/modulepreload URLs in your theme tooling.
+
 `prerender`, `check` and failing cases write `ssr-report/<store>/`. Failures exit
 nonzero. `repro` replays existing cases and exits nonzero if a failure remains.
 No props yet is a successful `check` with a hint to run prerender.
@@ -443,6 +542,15 @@ are available on the returned runtime.
 
 ## SSR-safe component rules
 
+- Use `vue({ template: { compilerOptions: { comments: false } } })` in the shared
+  Vite config so production SSR/client and development verification agree on
+  template comments. Build warns when the Vue plugin explicitly exposes
+  `comments: true`; defaults or uninspectable configurations are covered by this
+  rule without guessing their behavior.
+- Mount `Teleport` only when open, for example
+  `<Teleport v-if="open" to="#modal-root">...</Teleport>`, with `open` initially
+  false on both server and client. Gate the Teleport itself; hiding only its
+  contents leaves Teleport markers in the initial tree.
 - Start server and first client render with identical state. Toggle reactive state
   only after interaction or mount. Use CSS for initial responsive layout.
 - Read `window`, `document`, `matchMedia` and other browser APIs in `onMounted`.

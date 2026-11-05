@@ -17,12 +17,12 @@ async function replay(saved, config) {
   }
   // Transport and deployment failures are observable offline from captured bytes.
   if (saved.error.type === 'build-mismatch') return { ok: false, reproduced: true, type: 'build-mismatch', error: saved.error, verification: await local(), message: 'Captured theme was not deployed with the recorded build. Fresh capture required after deployment.' }
-  if (saved.error.type === 'key-mismatch') {
+  if (['key-mismatch', 'invalid-props'].includes(saved.error.type)) {
     const { verifyIsland } = await import('./pages.mjs')
     let error
-    try { verifyIsland({ ...saved.transport, name: saved.component, key: saved.key, exactProps: saved.exactProps }, saved.buildId) }
+    try { verifyIsland({ ...saved.transport, name: saved.component, key: saved.key, exactProps: saved.exactProps }, saved.buildId, saved.page) }
     catch (caught) { error = { message: caught.message, stack: caught.stack } }
-    return { ok: !error, reproduced: !!error, type: 'key-mismatch', error, verification: await local() }
+    return { ok: !error, reproduced: !!error, type: saved.error.type, error, verification: await local() }
   }
   const result = await local()
   return { ...result, reproduced: !result.ok && result.type === saved.error.type, originalType: saved.error.type, originalBuildId: saved.buildId }

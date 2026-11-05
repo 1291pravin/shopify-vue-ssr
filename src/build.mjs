@@ -1,4 +1,4 @@
-import { build } from 'vite'
+import { build, loadConfigFromFile, mergeConfig } from 'vite'
 import { readFile, writeFile, mkdir, copyFile, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,22 @@ import MagicString from 'magic-string'
 import remapping from '@jridgewell/remapping'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
+
+// Published vite-plugin-shopify 5 uses -config/-html and :... sub-plugins;
+// @driver-digital/vite-plugin-shopify-clean 2 uses vite-plugin-shopify-clean.
+const themePlugins = [/^vite-plugin-shopify(?:$|[-:])/, /^shopify[-:]clean(?:$|[-:])/]
+async function nestedPlugins(plugins = [], exclusions, kind) {
+  const kept = []
+  for (const item of plugins) {
+    const plugin = await item
+    if (Array.isArray(plugin)) kept.push(...await nestedPlugins(plugin, exclusions, kind))
+    else if (plugin) {
+      if (exclusions.some(rule => typeof rule === 'string' ? plugin.name === rule : new RegExp(rule.source, rule.flags).test(plugin.name))) console.log(`SSR ${kind}: skipped plugin "${plugin.name}"`)
+      else kept.push(plugin)
+    }
+  }
+  return kept
+}
 export async function writeSnippets(themeDir, buildId) {
   await mkdir(join(themeDir, 'snippets'), { recursive: true })
   await copyFile(new URL('../templates/vue-island.liquid', import.meta.url), join(themeDir, 'snippets/vue-island.liquid'))
@@ -42,11 +58,20 @@ export async function buildProject(config) {
       },
     }],
   }
-  const runBuild = (kind, dir, entry) => build({ ...base,
-    shopifyVueSsrBuild: { kind, outDir: dir, entry },
-    // Also expose the server target to function-style project configs.
-    build: { ssr: kind === 'server' ? join(here, 'entries/server.mjs') : false },
-  })
+  const runBuild = async (kind, dir, entry) => {
+    const target = { ...base,
+      shopifyVueSsrBuild: { kind, outDir: dir, entry },
+      // Also expose the server target to function-style project configs.
+      build: { ssr: kind === 'server' ? join(here, 'entries/server.mjs') : false },
+    }
+    if (kind === 'client') return build(target)
+    // Vite resolves its plugin list before config hooks. Load the project fresh
+    // per target, then filter before Vite can invoke apply/config or write hooks.
+    const loaded = await loadConfigFromFile({ command: 'build', mode: 'production', isSsrBuild: kind === 'server', isPreview: false }, config.configFile, root, 'warn')
+    if (!loaded) throw new Error('Could not load the Vite config for the nested build')
+    const project = { ...loaded.config, plugins: await nestedPlugins(loaded.config.plugins, [...themePlugins, ...(config.nestedBuild?.excludePlugins ?? [])], kind) }
+    return build(mergeConfig(project, { ...target, configFile: false }))
+  }
   await mkdir(outDir, { recursive: true })
   await runBuild('server', outDir)
   const serverPath = join(outDir, 'server-entry.mjs')

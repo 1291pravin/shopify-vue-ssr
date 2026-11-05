@@ -121,8 +121,8 @@ export async function prerender(inputs, config, { dryRun = false, cleanup = fals
           transport: { name: island.name, key: island.key, miss: island.miss, hit: island.hit, buildId: island.buildId }, ...extra })
       }
       if (!registered.has(island.name)) { item.why = 'Component not registered in plugin options; client rendering'; continue }
-      try { verifyIsland(island, build.buildId) }
-      catch (error) { fail('key-mismatch', error); continue }
+      try { verifyIsland(island, build.buildId, page) }
+      catch (error) { fail(error.type ?? 'key-mismatch', error); log(error.message); continue }
       if (!captured.has(island.name)) captured.set(island.name, new Set())
       if (captured.get(island.name).size < 20) captured.get(island.name).add(island.exactProps)
       if (!eligible.has(island.key)) { item.why = 'Over the 20 unique cache lookup limit; client rendering'; continue }

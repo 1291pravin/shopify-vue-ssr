@@ -4,7 +4,7 @@ import { shopifyVueSsr } from 'shopify-vue-ssr'
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({ template: { compilerOptions: { comments: false } } }),
     shopifyVueSsr({
       islands: 'src/islands/**/*.vue',
       exclude: ['**/*.test.vue'],

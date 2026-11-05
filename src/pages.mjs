@@ -19,12 +19,14 @@ export function findIslands(html) {
   visit(parse(html))
   return islands
 }
-export function verifyIsland(island, buildId) {
+export function verifyIsland(island, buildId, page = 'storefront') {
   if (!island.name || !island.key || typeof island.exactProps !== 'string') throw new Error('Missing component, key, or exact props JSON')
   if (/[\r\n]/.test(island.exactProps)) throw new Error('Props must be a single line with escaped newlines')
   const expected = cacheKey(buildId, island.name, island.exactProps)
   if (expected !== island.key || (island.miss !== undefined && island.miss !== expected)) throw new Error(`Key mismatch: emitted ${island.key}, computed ${expected}; rebuild or capture fresh HTML`)
-  const props = JSON.parse(island.exactProps)
+  let props
+  try { props = JSON.parse(island.exactProps) }
+  catch (error) { throw Object.assign(new Error(`Invalid props JSON for island "${island.name}" on ${page}: ${error.message}`), { type: 'invalid-props' }) }
   if (!props || typeof props !== 'object' || Array.isArray(props)) throw new Error('Props must be a JSON object')
   if (island.hit === (island.miss !== undefined)) throw new Error('Expected exactly one cache hit or cache miss marker')
   return props

@@ -60,4 +60,4 @@ export interface PrerenderOptions {
 export function prerender(inputs: string[], config: ProjectConfig, options?: PrerenderOptions): Promise<Report>
 export function runCheck(config: ProjectConfig, options?: Pick<PrerenderOptions, 'verify'>): Promise<Report>
 export function findIslands(html: string): Island[]
-export function verifyIsland(island: Island, buildId: string): Record<string, unknown>
+export function verifyIsland(island: Island, buildId: string, page?: string): Record<string, unknown>
