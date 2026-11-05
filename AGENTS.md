@@ -26,6 +26,8 @@ projects stay under root `out/` so Node resolves package and peer dependencies.
 Preserve exact props bytes for keys, deterministic server/initial client output,
 verification before writes, build confirmation and cleanup guards. Keep store
 credentials and reports isolated. New public exports need usable declarations.
+Put visitor-specific fields in `client_props`; `props` are stored in the public
+cache and must never contain personal data.
 Validate changes through the CLI and installed package as well as direct functions.
 
 ## Public workflow

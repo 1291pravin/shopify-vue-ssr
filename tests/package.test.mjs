@@ -105,12 +105,13 @@ test('pre-storage verification blocks real mismatch, render error and oversized 
 })
 
 test('reports, stable cases and offline repro retain exact props, DOM difference, mapped stack and command', async () => {
-  const html = island('Broken', { props: '{ "text": "exact bytes" }' })
+  const html = island('Broken', { props: '{ "text": "exact bytes" }' }).replace('</vue-island>', '<script type="application/json" data-client-props>{"text":"visitor-only"}</script></vue-island>')
   const report = await prerender(['capture.html'], config, { dryRun: true, reader: async () => html })
   const failure = report.failures[0]
   const saved = JSON.parse(await readFile(join(config.reportDir, 'cases', failure.id + '.json'), 'utf8'))
   assert.equal(saved.schemaVersion, 1)
   assert.equal(saved.exactProps, '{ "text": "exact bytes" }')
+  assert.doesNotMatch(JSON.stringify(saved), /visitor-only|client.props/)
   assert.deepEqual(saved.widths, [375, 1440])
   assert.match(saved.renderedHtml, /undefined/)
   assert.ok(saved.mismatch.path)
@@ -121,6 +122,7 @@ test('reports, stable cases and offline repro retain exact props, DOM difference
   const result = await repro(failure.id, config)
   assert.equal(result.reproduced, true)
   assert.equal(result.type, 'hydration-mismatch')
+  assert.doesNotMatch(JSON.stringify(result), /visitor-only|client.props/)
   const second = await prerender(['capture.html'], config, { dryRun: true, reader: async () => html })
   assert.equal(second.failures[0].id, failure.id)
   const cli = resolve(workspace, 'src/cli.mjs'), caseFile = join(config.reportDir, 'cases', failure.id + '.json')

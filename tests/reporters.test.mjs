@@ -8,14 +8,56 @@ const { defineComponent, defineAsyncComponent, h, ref, nextTick } = await import
 const { mountIslands, createIslandRegistry, callbackReporter, dataLayerReporter, consoleReporter } = await import('../src/client.mjs')
 const Good = defineComponent({ render() { return h('p', 'expected') } })
 const Bad = defineComponent({ setup() { throw new Error('private-email@example.com') } })
-function element({ component = 'Good', props = '{}', hit = false } = {}) {
+function element({ component = 'Good', props = '{}', clientProps, hit = false } = {}) {
   const node = document.createElement('vue-island')
   node.dataset.component = component; node.dataset.ssrKey = 'a'.repeat(32)
   node.innerHTML = `<script data-props type="application/json">${props}</script><div data-ssr-root ${hit ? 'data-ssr="1"' : 'data-ssr-miss="test"'}><p>server text</p></div>`
+  if (clientProps !== undefined) {
+    const script = document.createElement('script')
+    script.type = 'application/json'; script.dataset.clientProps = ''; script.textContent = clientProps
+    node.prepend(script)
+  }
   document.body.append(node)
   return node
 }
 after(() => { dom.window.close(); for (const key of ['window', 'document', 'Element', 'HTMLElement', 'SVGElement', 'Node']) delete globalThis[key] })
+
+test('client props shallow-merge with precedence on cache misses without changing shared JSON', () => {
+  let received
+  const Header = defineComponent({ props: ['title', 'count', 'customer', 'menu'], setup(props) {
+    received = { ...props }
+    return () => h('p', `${props.title}: ${props.count}`)
+  } })
+  const props = '{ "title": "Shop", "count": 0, "customer": true, "menu": {"shared":true} }'
+  const node = element({ component: 'Header', props, clientProps: '{"count":3,"customer":false,"menu":{"visitor":true}}' })
+  const runtime = mountIslands({ registry: { Header }, scope: node, observe: false })
+  try {
+    runtime.load(node)
+    assert.deepEqual(received, { title: 'Shop', count: 3, customer: false, menu: { visitor: true } })
+    assert.equal(node.querySelector('p').textContent, 'Shop: 3')
+    assert.equal(node.querySelector('[data-props]').textContent, props)
+  } finally { runtime.destroy(); document.body.innerHTML = '' }
+})
+
+test('invalid client props identify the island locally and keep reporter metadata private', () => {
+  const previous = console.error
+  console.error = () => {}
+  try {
+    for (const clientProps of ['{"private":"visitor-only",}', '', 'null', '[]', '3', '"text"']) {
+      const messages = [], events = []
+      console.error = message => messages.push(message)
+      const node = element({ clientProps })
+      const runtime = mountIslands({ registry: { Good }, scope: node, observe: false, consent: () => true, reporter: event => events.push(event) })
+      try {
+        runtime.load(node)
+        assert.match(messages[0], /Invalid client props JSON for island "Good" on https:\/\/store.invalid/)
+        assert.equal(node.querySelector('[data-ssr-root]').hasAttribute('data-v-app'), false)
+        assert.equal(events[0].message, 'Island mount failed')
+        assert.doesNotMatch(JSON.stringify(events), /visitor-only|private|JSON|store.invalid/)
+      } finally { runtime.destroy(); document.body.innerHTML = '' }
+    }
+  } finally { console.error = previous }
+})
 
 test('registry selects existing sync/async components, warns on missing own names and handles special keys', () => {
   const Async = defineAsyncComponent(() => Promise.resolve(Good))
@@ -136,7 +178,7 @@ test('by default a plain mismatch stays hydrated: Vue patches it and the island 
     const count = ref(props.count)
     return () => h('button', { class: 'cart', onClick: () => count.value++ }, `Cart ${count.value}`)
   } })
-  const node = element({ component: 'Cart', props: '{"count":3}', hit: true })
+  const node = element({ component: 'Cart', props: '{"count":0}', clientProps: '{"count":3}', hit: true })
   node.querySelector('[data-ssr-root]').innerHTML = '<button class="cart">Cart 0</button>'
   const button = node.querySelector('button')
   window.__ssr = { hydrated: [], csr: [], mismatches: [] }
@@ -169,12 +211,12 @@ test('an island that breaks while hydrating is always remounted on the client', 
 test('onMismatch remount discards the stored HTML and remounts the island on the client', async () => {
   const originalWarn = console.warn, originalError = console.error
   console.warn = () => {}; console.error = () => {}
-  // Session-varying props: the stored fragment says 0, the visitor's real props say 3.
+  // The cached shared props say 0; the browser-only visitor override says 3.
   const Cart = defineComponent({ props: ['count'], setup(props) {
     const count = ref(props.count)
     return () => h('button', { class: 'cart', onClick: () => count.value++ }, `Cart ${count.value}`)
   } })
-  const node = element({ component: 'Cart', props: '{"count":3}', hit: true })
+  const node = element({ component: 'Cart', props: '{"count":0}', clientProps: '{"count":3}', hit: true })
   node.querySelector('[data-ssr-root]').innerHTML = '<button class="cart">Cart 0</button>'
   window.__ssr = { hydrated: [], csr: [], mismatches: [] }
   const events = []
@@ -195,6 +237,9 @@ test('onMismatch remount discards the stored HTML and remounts the island on the
 
 test('a matching fragment stays hydrated without a remount', () => {
   const node = element({ hit: true })
+  const clientData = document.createElement('script')
+  clientData.type = 'application/json'; clientData.dataset.clientProps = ''; clientData.textContent = '{}'
+  node.append(clientData)
   node.querySelector('[data-ssr-root]').innerHTML = '<p>expected</p>'
   const paragraph = node.querySelector('p')
   window.__ssr = { hydrated: [], csr: [], mismatches: [] }

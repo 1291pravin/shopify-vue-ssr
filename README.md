@@ -4,8 +4,8 @@ Render public Vue islands before requests and cache verified HTML in Shopify
 metaobjects. Liquid serves cache hits and the browser hydrates them. Cache misses
 render in the browser. No rendering server or request proxy is needed.
 
-Use this for public theme sections whose complete inputs are in props. Keep carts,
-accounts, visitor-specific prices and other private state client-rendered.
+Use this for public theme sections whose shared inputs are in props. Pass cart,
+account and other visitor-specific fields separately in `client_props` for browser rendering.
 [Request flow and cache identity](docs/how-it-works.md).
 
 ## Requirements
@@ -140,6 +140,38 @@ accounts, visitor-specific prices and other private state client-rendered.
    and stores verified fragments. Other components stay client-rendered. Failures
    produce reports and a nonzero exit. Cache hits are skipped. Run again when
    public content changes. `check` is optional before later deployments.
+
+## Visitor-specific props (cart, customer)
+
+A header can share cached HTML while its cart count and logged-in state vary per
+visitor. Capture shared inputs and visitor inputs separately:
+
+```liquid
+{%- capture props -%}{"title":{{ shop.name | json }}}{%- endcapture -%}
+{%- capture client_props -%}{"cartCount":{{ cart.item_count | json }},"loggedIn":{% if customer %}true{% else %}false{% endif %}}{%- endcapture -%}
+{% render 'vue-island', component: 'Header', props: props, client_props: client_props %}
+```
+
+The Header component should default `cartCount` to `0` and `loggedIn` to `false`.
+Visitors first see the cached header with those defaults. On hydration, the count
+and logged-in text update to the visitor's values. Without a cache hit, the browser
+renders with the visitor's values immediately. The loader shallow-merges
+`{ ...props, ...clientProps }`; client fields win, including entire nested objects.
+
+Anything that varies per visitor goes in `client_props`; never put personal data
+in `props` because `props` are stored in the public cache. Include only the visitor
+fields the component needs, such as a customer-presence boolean, rather than the
+whole customer object. `client_props` is a single-line JSON object string with the
+same transport rules as `props`, including escaped newlines and literal `<` escaping.
+It is emitted in a separate `data-client-props` script. It never affects the cache
+key, lookup or stored HTML, and prerender, check and repro ignore it entirely,
+including when saving props and failure cases.
+
+Hydration follows `onMismatch`: the default `keep` lets Vue patch differing text;
+`remount` renders again with the merged props if hydration mismatches. For changing
+attributes or structure, see [When hydration does not match](#when-hydration-does-not-match).
+Sections without visitor data need nothing: omit `client_props` to keep the existing
+output and cache keys unchanged.
 
 ## Migrating sections from `<vue-app>`
 
@@ -561,6 +593,8 @@ are available on the returned runtime.
 
 ## SSR-safe component rules
 
+- Put visitor-specific fields in `client_props`; keep personal data out of public
+  `props`. Prerender/check verify shared props only; visitor overrides apply in the browser.
 - Use `vue({ template: { compilerOptions: { comments: false } } })` in the shared
   Vite config so production SSR/client and development verification agree on
   template comments. Build warns when the Vue plugin explicitly exposes

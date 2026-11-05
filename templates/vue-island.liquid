@@ -1,6 +1,7 @@
 {% doc %}
   @param {string} component - Registered Vue component name.
   @param {string} props - Single line captured props JSON.
+  @param {string} [client_props] - Single line visitor-specific JSON object, browser only.
 {% enddoc %}
 {%- capture build_id -%}{%- render 'ssr-build-id' -%}{%- endcapture -%}
 {%- capture json_less_than -%}\u003c{%- endcapture -%}
@@ -9,6 +10,9 @@
 {%- assign fragment = metaobjects.ssr_fragment[key] -%}
 <vue-island data-component="{{ component | escape }}" data-ssr-key="{{ key }}" data-ssr-build="{{ build_id }}">
   <script type="application/json" data-props>{{- props -}}</script>
+  {%- if client_props != blank -%}
+    <script type="application/json" data-client-props>{{- client_props | replace: '<', json_less_than -}}</script>
+  {%- endif -%}
   {%- if settings.ssr_enabled and fragment.html.value != blank and fragment.component.value == component -%}
     <div data-ssr-root data-ssr="1">{{- fragment.html.value -}}</div>
   {%- else -%}

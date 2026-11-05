@@ -121,6 +121,33 @@ test('saved HTML uses real file bytes and dry-run verifies with no Admin calls; 
   assert.equal(checked.counts.skipped, 1); assert.equal(checked.failures.length, 0); assert.equal(calls, 2)
 }))
 
+test('prerender and check ignore even malformed client props and save only exact shared props', () => temp(async (config, buildId) => {
+  const props = '{ "title": "shared", "cartCount": 0 }', mock = mockAdmin(), inputs = []
+  const verify = async (_config, input) => {
+    inputs.push(input)
+    assert.deepEqual(input, { component: 'Good', exactProps: props })
+    return good()
+  }
+  const pages = ['{"cartCount":3,"visitor":"visitor-only"}', '{invalid-client-json']
+    .map(value => island(buildId, { props }).replace('<script data-props>', `<script type="application/json" data-client-props>${value}</script><script data-props>`)).join('')
+  const report = await prerender(['saved.html'], config, { log: quiet, reader: async () => pages, admin: mock.admin, verify })
+  assert.equal(report.failures.length, 0)
+  assert.equal(report.counts.filled, 1)
+  assert.equal(inputs.length, 1)
+  const writes = mock.calls.filter(call => call.query === operations.upsert)
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].vars.html, '<p>local render</p>')
+  const files = await readdir(join(config.reportDir, 'props/Good'))
+  assert.equal(files.length, 1)
+  const saved = await readFile(join(config.reportDir, 'props/Good', files[0]), 'utf8')
+  assert.deepEqual(JSON.parse(saved), { schemaVersion: 1, component: 'Good', exactProps: props })
+  const checked = await runCheck(config, { verify })
+  assert.equal(checked.failures.length, 0)
+  assert.equal(inputs.length, 2)
+  const reports = await Promise.all(['report.json', 'summary.md', 'failures.jsonl'].map(file => readFile(join(config.reportDir, file), 'utf8')))
+  assert.doesNotMatch([saved, JSON.stringify(mock.calls), ...reports].join(''), /visitor-only|client.props|invalid-client-json/)
+}))
+
 test('build mismatch in any page marker blocks every write for that page, even when earlier islands match', () => temp(async (config, buildId) => {
   const mock = mockAdmin()
   const report = await prerender(['saved.html'], config, { log: quiet, admin: mock.admin, reader: async () => island(buildId) + island('b'.repeat(64)), verify: async () => { throw new Error('must not render') } })

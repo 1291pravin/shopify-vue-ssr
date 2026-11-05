@@ -30,6 +30,9 @@ For multiple stores, use ids from the plugin's `stores` map with `--store ID`.
 reports, captured props and Admin cache. Builds are shared by component code;
 theme ids are history metadata and never replace build ids in cache keys.
 
+Put visitor-specific fields in `client_props`; `props` are stored in the public
+cache and must never contain personal data. Only shared props are prerendered and verified.
+
 Repair checklist:
 
 1. Read summary.md and the saved case. Run `npx shopify-vue-ssr repro CASE_ID --store ID`

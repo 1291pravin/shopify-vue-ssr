@@ -57,6 +57,15 @@ export function mountIslands({ registry, scope = document, consent = () => false
         try { props = JSON.parse(data.textContent ?? '') }
         catch (error) { throw Object.assign(new Error(`Invalid props JSON for island "${name}" on ${window.location.href}: ${error.message}`), { type: 'invalid-props' }) }
         if (!props || typeof props !== 'object' || Array.isArray(props)) throw new Error('Island props must be a JSON object')
+        const clientData = island.querySelector(':scope > script[data-client-props]')
+        if (clientData) {
+          let clientProps
+          try {
+            clientProps = JSON.parse(clientData.textContent ?? '')
+            if (!clientProps || typeof clientProps !== 'object' || Array.isArray(clientProps)) throw new Error('Client props must be a JSON object')
+          } catch (error) { throw Object.assign(new Error(`Invalid client props JSON for island "${name}" on ${window.location.href}: ${error.message}`), { type: 'invalid-props' }) }
+          props = { ...props, ...clientProps }
+        }
         if (!Object.hasOwn(registry, name)) throw new Error(`Unknown island component: ${name}`)
         const hydrate = root.dataset.ssr === '1'
         let failed = false
