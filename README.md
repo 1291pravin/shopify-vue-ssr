@@ -229,11 +229,12 @@ and verification builds keep using the plugin's static virtual registry.
 
 ### Theme tooling in nested builds
 
-Server and verification builds automatically skip `vite-plugin-shopify` and its
-`-`/`:` sub-plugins, including `vite-plugin-shopify-config`,
-`vite-plugin-shopify-html`, `vite-plugin-shopify:liquid-tailwind-refresh`,
-`vite-plugin-shopify:react-refresh`, and `vite-plugin-shopify-clean` (the name used
-by `@driver-digital/vite-plugin-shopify-clean`). Each skipped plugin is logged.
+Server and verification builds automatically skip the plugins that write into the
+theme: `vite-plugin-shopify-html` (rewrites `snippets/vite-tag.liquid`), the
+dev-only `vite-plugin-shopify:*` helpers, and `vite-plugin-shopify-clean` (the name
+used by `@driver-digital/vite-plugin-shopify-clean`). `vite-plugin-shopify-config`
+keeps running because it provides the `~` and `@` import aliases; this package
+overrides its output folder. Each skipped plugin is logged.
 This prevents nested builds from rewriting theme snippets or cleaning assets
 just produced by `vite build`. Normal and package-owned client builds retain them.
 Other plugins, aliases and defines are preserved; conflicting package output/SSR

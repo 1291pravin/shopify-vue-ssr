@@ -99,7 +99,7 @@ test('nested plugin exclusion rules validate names and RegExp patterns', () => {
   assert.deepEqual(normalizeOptions({ nestedBuild: { excludePlugins: ['custom-clean', /^theme-/g] } }, root).nestedBuild.excludePlugins, ['custom-clean', /^theme-/g])
 })
 test('server and verify skip theme tooling before all hooks; client and normal builds retain it', { timeout: 120000 }, async () => {
-  const pluginNames = ['vite-plugin-shopify', 'vite-plugin-shopify-config', 'vite-plugin-shopify-html', 'vite-plugin-shopify:liquid-tailwind-refresh', 'vite-plugin-shopify:react-refresh', 'vite-plugin-shopify-clean', 'custom-clean', 'theme-writer-one', 'theme-writer-two']
+  const pluginNames = ['vite-plugin-shopify-html', 'vite-plugin-shopify:liquid-tailwind-refresh', 'vite-plugin-shopify:react-refresh', 'vite-plugin-shopify-clean', 'custom-clean', 'theme-writer-one', 'theme-writer-two']
   await put('src/nested-client.ts', `import { mountIslands } from 'shopify-vue-ssr/client'; import { registry } from 'virtual:shopify-vue-ssr/islands'; mountIslands({ registry })`)
   await put('nested-theme/assets/keep.js', 'existing-theme-asset')
   await put('nested.vite.ts', `import vue from '@vitejs/plugin-vue'
@@ -118,6 +118,7 @@ function tooling(name) {
 export default ({ isSsrBuild }) => ({
   plugins: [vue({ template: { compilerOptions: { comments: false } } }),
     [Promise.resolve(${JSON.stringify(pluginNames)}.map(tooling))],
+    { name: 'vite-plugin-shopify-config', config(config) { appendFileSync(join(import.meta.dirname, 'kept-calls.jsonl'), JSON.stringify({ kind: config.shopifyVueSsrBuild?.kind ?? 'normal' }) + '\\n') } },
     shopifyVueSsr({ islands: 'src/components/Child.vue', client: { entry: 'src/nested-client.ts' }, themeDir: 'nested-theme', outDir: 'nested-ssr',
       nestedBuild: { excludePlugins: ['custom-clean', /^theme-writer-/g] } }),
     { name: 'retained-proof', config(config) { if (Boolean(config.build.ssr) !== isSsrBuild) throw new Error('wrong config environment') } }],
@@ -126,6 +127,10 @@ export default ({ isSsrBuild }) => ({
   const built = await exec(process.execPath, [cli, 'build', '--root', root, '--config', 'nested.vite.ts'])
   for (const kind of ['server', 'verify']) for (const name of pluginNames) assert.ok(built.stdout.includes(`SSR ${kind}: skipped plugin "${name}"`))
   assert.equal(await readFile(join(root, 'nested-theme/assets/keep.js'), 'utf8'), 'existing-theme-asset')
+  // vite-plugin-shopify-config supplies the ~ and @ aliases, so it must keep running in nested builds.
+  const kept = (await readFile(join(root, 'kept-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line).kind)
+  for (const kind of ['server', 'verify']) assert.ok(kept.includes(kind), kind)
+  assert.ok(!built.stdout.includes('skipped plugin "vite-plugin-shopify-config"'))
   const calls = async () => (await readFile(join(root, 'hook-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
   assert.equal((await calls()).length, pluginNames.length * 5)
   assert.ok((await calls()).every(call => call.kind === 'client'))

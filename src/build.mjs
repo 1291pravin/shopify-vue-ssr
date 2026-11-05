@@ -9,9 +9,11 @@ import remapping from '@jridgewell/remapping'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 
-// Published vite-plugin-shopify 5 uses -config/-html and :... sub-plugins;
-// @driver-digital/vite-plugin-shopify-clean 2 uses vite-plugin-shopify-clean.
-const themePlugins = [/^vite-plugin-shopify(?:$|[-:])/, /^shopify[-:]clean(?:$|[-:])/]
+// Skip plugins that write into the theme during nested builds: vite-plugin-shopify 5's -html
+// (rewrites snippets/vite-tag.liquid) and its dev-only ":" helpers, plus clean plugins
+// (@driver-digital/vite-plugin-shopify-clean deletes theme assets). Keep vite-plugin-shopify-config:
+// it provides the "~" and "@" aliases components import with; this package overrides its output dir.
+const themePlugins = [/^vite-plugin-shopify-html$/, /^vite-plugin-shopify:/, /^vite-plugin-shopify-clean$/, /^shopify[-:]clean(?:$|[-:])/]
 async function nestedPlugins(plugins = [], exclusions, kind) {
   const kept = []
   for (const item of plugins) {
