@@ -9,15 +9,14 @@ import { loadConfig } from '../src/config.mjs'
 import { cacheKey, scriptSafeJson } from '../src/key.mjs'
 import { renderAndVerify, readBuild } from '../src/verify.mjs'
 import { findIslands } from '../src/pages.mjs'
-import { runPages, runCheck } from '../src/sync.mjs'
+import { prerender, runCheck } from '../src/prerender.mjs'
 import { repro } from '../src/repro.mjs'
 import { selectPrunable } from '../src/prune.mjs'
-import { withHistory, definitions } from './helpers/admin.mjs'
-import { updateHealthIssue } from '../src/health-issue.mjs'
-import { createAdmin, ensureDefinition } from '../src/admin.mjs'
-import { initProject } from '../src/init.mjs'
+import { withHistory } from './helpers/admin.mjs'
+import { createAdmin } from '../src/admin.mjs'
 import { createPageReader, sitemapUrls } from '../src/pages.mjs'
 
+const inspectPages = (inputs, config, options = {}) => prerender(inputs, config, { ...options, dryRun: true })
 let root, config, build
 const exec = promisify(execFile)
 const workspace = resolve(import.meta.dirname, '..')
@@ -96,7 +95,7 @@ test('source-mapped setup error points to actual .vue line and multibyte oversiz
 test('pre-storage verification blocks real mismatch, render error and oversized HTML; only own good render is upserted', async () => {
   const calls = []
   const html = ['Broken', 'Throws', 'Large', 'Good'].map(name => island(name)).join('')
-  const report = await runPages('sync', ['https://example.myshopify.com/'], config, { reader: async () => html, admin: withHistory(async (_query, vars) => { calls.push(vars); return payload }) })
+  const report = await prerender(['capture.html'], config, { reader: async () => html, admin: withHistory(async (_query, vars) => { calls.push(vars); return payload }) })
   assert.equal(calls.length, 1)
   assert.equal(calls[0].name, 'Good')
   assert.equal(calls[0].html, '<section>safe</section>')
@@ -107,7 +106,7 @@ test('pre-storage verification blocks real mismatch, render error and oversized 
 
 test('reports, stable cases and offline repro retain exact props, DOM difference, mapped stack and command', async () => {
   const html = island('Broken', { props: '{ "text": "exact bytes" }' })
-  const report = await runPages('sync', ['capture.html'], config, { dryRun: true, reader: async () => html })
+  const report = await prerender(['capture.html'], config, { dryRun: true, reader: async () => html })
   const failure = report.failures[0]
   const saved = JSON.parse(await readFile(join(config.reportDir, 'cases', failure.id + '.json'), 'utf8'))
   assert.equal(saved.schemaVersion, 1)
@@ -122,7 +121,7 @@ test('reports, stable cases and offline repro retain exact props, DOM difference
   const result = await repro(failure.id, config)
   assert.equal(result.reproduced, true)
   assert.equal(result.type, 'hydration-mismatch')
-  const second = await runPages('sync', ['capture.html'], config, { dryRun: true, reader: async () => html })
+  const second = await prerender(['capture.html'], config, { dryRun: true, reader: async () => html })
   assert.equal(second.failures[0].id, failure.id)
   const cli = resolve(workspace, 'src/cli.mjs'), caseFile = join(config.reportDir, 'cases', failure.id + '.json')
   const { stdout } = await exec(process.execPath, [cli, 'repro', caseFile, '--root', root, '--json']).catch(error => error)
@@ -135,17 +134,17 @@ test('reports, stable cases and offline repro retain exact props, DOM difference
   assert.doesNotMatch(short, /\[object /)
 })
 
-test('build mismatch, old markerless capture and tampered keys store nothing; doctor counts hits and misses read-only', async () => {
+test('build mismatch, old markerless capture and tampered keys store nothing; dry-run reports hits and misses without writes', async () => {
   let writes = 0
   const admin = async () => { writes++; return payload }
-  const stale = await runPages('sync', ['old'], config, { reader: async () => island('Good', { buildId: '0'.repeat(64) }), admin })
+  const stale = await prerender(['old.html'], config, { reader: async () => island('Good', { buildId: '0'.repeat(64) }), admin })
   assert.equal(stale.failures[0].type, 'build-mismatch')
-  assert.equal(stale.failures[0].message, 'theme not deployed with this build')
-  const old = await runPages('sync', ['old'], config, { reader: async () => island('Good').replace(/ data-ssr-build="[^"]+"/, ''), admin })
+  assert.match(stale.failures[0].message, /Deploy the matching build/)
+  const old = await prerender(['old.html'], config, { reader: async () => island('Good').replace(/ data-ssr-build="[^"]+"/, ''), admin })
   assert.equal(old.failures[0].type, 'build-mismatch')
-  const tampered = await runPages('sync', ['bad'], config, { reader: async () => island('Good', { key: 'tampered' }), admin })
+  const tampered = await prerender(['bad.html'], config, { reader: async () => island('Good', { key: 'tampered' }), admin })
   assert.equal(tampered.failures[0].type, 'key-mismatch')
-  const doctor = await runPages('doctor', ['page'], config, { reader: async () => island('Good', { hit: true }) + island('Good'), admin })
+  const doctor = await inspectPages(['page.html'], config, { reader: async () => island('Good', { hit: true }) + island('Good'), admin })
   assert.equal(doctor.counts.hit, 1)
   assert.equal(doctor.counts.misses, 1)
   assert.equal(doctor.counts.coverage, 0.5)
@@ -155,21 +154,21 @@ test('build mismatch, old markerless capture and tampered keys store nothing; do
 test('dry-run renders and verifies without writes; upsert and fetch errors retain context; duplicate misses deduplicate', async () => {
   let writes = 0
   const admin = withHistory(async () => { writes++; throw new Error('injected upsert failure') })
-  const dry = await runPages('sync', ['page'], config, { dryRun: true, reader: async () => island('Good'), admin })
+  const dry = await prerender(['page.html'], config, { dryRun: true, reader: async () => island('Good'), admin })
   assert.equal(dry.counts.skipped, 1)
   assert.equal(dry.failures.length, 0)
   assert.equal(writes, 0)
-  const failure = await runPages('sync', ['page'], config, { reader: async () => island('Good'), admin })
+  const failure = await prerender(['page.html'], config, { reader: async () => island('Good'), admin })
   assert.equal(failure.failures[0].type, 'upsert-error')
-  const fetchFailure = await runPages('doctor', ['page'], config, { reader: async () => { throw new Error('offline') } })
+  const fetchFailure = await inspectPages(['page.html'], config, { reader: async () => { throw new Error('offline') } })
   assert.equal(fetchFailure.failures[0].type, 'fetch-error')
-  const duplicate = await runPages('sync', ['page'], config, { reader: async () => island('Good') + island('Good'), admin: withHistory(async () => { writes++; return payload }) })
+  const duplicate = await prerender(['page.html'], config, { reader: async () => island('Good') + island('Good'), admin: withHistory(async () => { writes++; return payload }) })
   assert.equal(duplicate.counts.filled, 1)
   assert.equal(duplicate.counts.skipped, 1)
   assert.equal(writes, 2)
 })
 
-test('check requires every fixture, verifies saved cases and reports failures', async () => {
+test('check verifies saved props and optional fixtures and reports failures', async () => {
   for (const component of build.components) {
     await mkdir(join(config.fixturesDir, component), { recursive: true })
     await writeFile(join(config.fixturesDir, component, 'one.json'), '{}')
@@ -177,7 +176,7 @@ test('check requires every fixture, verifies saved cases and reports failures', 
   const report = await runCheck(config)
   assert.ok(report.failures.some(f => f.type === 'render-error'))
   assert.ok(report.failures.some(f => f.type === 'hydration-mismatch'))
-  assert.ok(report.pages.some(p => p.page.startsWith('case:')))
+  assert.ok(report.pages.some(p => p.page.includes('props')))
   assert.ok(report.pages.some(p => p.islands[0].component === 'Good' && p.islands[0].status === 'skipped'))
 })
 
@@ -187,7 +186,7 @@ test('manifest integrity failure writes a structured report and does not render'
   await writeFile(file, original + '\n// tampered')
   try {
     await assert.rejects(readBuild(config), /differs/)
-    const report = await runPages('sync', ['page'], config)
+    const report = await prerender(['page.html'], config)
     assert.equal(report.failures[0].type, 'build-mismatch')
   } finally { await writeFile(file, original) }
 })
@@ -204,9 +203,9 @@ test('malformed saved cases still produce a complete check report', async () => 
 test('full sitemap inventory is retained across partial and failed runs; seen keys stay protected', async () => {
   const sitemap = config.sitemap
   const reader = async url => url === sitemap ? '<urlset><url><loc>https://example.myshopify.com/a</loc></url></urlset>' : island('Good', { hit: true })
-  await runPages('doctor', [], config, { sitemap, reader })
+  await inspectPages(['https://example.myshopify.com'], config, { reader })
   const crawl = JSON.parse(await readFile(join(config.reportDir, 'latest-full-crawl.json'), 'utf8'))
-  await runPages('doctor', ['partial'], config, { reader: async () => { throw new Error('offline') } })
+  await inspectPages(['partial.html'], config, { reader: async () => { throw new Error('offline') } })
   assert.equal(JSON.parse(await readFile(join(config.reportDir, 'latest-full-crawl.json'), 'utf8')).runId, crawl.runId)
   const entries = [
     { id: 'keep', handle: cacheKey(build.buildId, 'Good', '{}'), updatedAt: '2020-01-01', fields: [{ key: 'build', value: build.buildId }] },
@@ -216,41 +215,6 @@ test('full sitemap inventory is retained across partial and failed runs; seen ke
   assert.deepEqual(selectPrunable(entries, [], { deployedBuildId: build.buildId, crawl }).selected.map(e => e.id), ['delete'])
   const latestRun = JSON.parse(await readFile(join(config.reportDir, 'latest-sitemap-run.json'), 'utf8'))
   assert.equal(latestRun.runId, crawl.runId)
-})
-
-test('health issue opens, updates, deduplicates, closes only on a full clean run; uses body-file', async () => {
-  let existing = [], calls = []
-  const gh = async args => { calls.push(args); return { stdout: args[1] === 'list' ? JSON.stringify(existing) : '' } }
-  const bad = { failures: [{}], counts: { failed: 1 }, fullCrawl: false }
-  assert.equal(await updateHealthIssue(bad, '/summary.md', gh), 'opened')
-  assert.ok(calls.some(a => a.includes('--body-file')))
-  existing = [{ number: 4, title: 'SSR health - default' }, { number: 5, title: 'SSR health - default' }, { number: 9, title: 'SSR health other' }]; calls = []
-  assert.equal(await updateHealthIssue(bad, '/summary.md', gh), 'updated')
-  assert.ok(calls.some(a => a[1] === 'close' && a[2] === '5'))
-  calls = []
-  assert.equal(await updateHealthIssue({ ...bad, failures: [], counts: { failed: 0 } }, '/summary.md', gh), 'unchanged')
-  assert.ok(!calls.some(a => a[1] === 'close'))
-  assert.equal(await updateHealthIssue({ failures: [], counts: { failed: 0 }, fullCrawl: true }, '/summary.md', gh), 'closed')
-})
-
-test('init is idempotent and never modifies an existing compatible definition or config; creates missing definition once', async () => {
-  let mutations = 0
-  const admin = async (query, _v, mutation) => { if (mutation) mutations++; return definitions(query) }
-  const local = { ...config, root: join(root, 'init'), configFile: undefined, themeDir: join(root, 'init/theme'), fixturesDir: join(root, 'init/ssr-fixtures') }
-  await initProject(local, { admin })
-  await writeFile(join(local.root, 'vite.config.ts'), 'export default { /* keep user config */ }')
-  local.configFile = join(local.root, 'vite.config.ts')
-  await initProject(local, { admin })
-  assert.equal(mutations, 0)
-  assert.equal(await readFile(join(local.root, 'vite.config.ts'), 'utf8'), 'export default { /* keep user config */ }')
-  await assert.rejects(readFile(join(local.root, 'ssr.config.mjs')), { code: 'ENOENT' })
-  assert.match(await readFile(join(local.root, 'AGENTS.md'), 'utf8'), /onMounted/)
-  const fresh = await ensureDefinition(async (_q, vars, mutation) => {
-    if (!mutation) return { metaobjectDefinitionByType: null }
-    assert.equal(vars.definition.type, 'ssr_fragment')
-    return { metaobjectDefinitionCreate: { metaobjectDefinition: { id: 'new' }, userErrors: [] } }
-  })
-  assert.equal(fresh.created, true)
 })
 
 test('direct Admin API and local CLI share result shape and retry throttling with backoff', async () => {
@@ -306,7 +270,7 @@ test('password login preserves cookies and sitemap index expansion rejects forei
     requests.push({ url, options })
     if (options.method === 'POST') { auth = true; assert.match(options.body, /form_type=storefront_password/); return new Response('ok', { headers: { 'set-cookie': 'storefront=1; Path=/; Secure' } }) }
     if (auth) { assert.match(options.headers.Cookie, /storefront=1/); return new Response('<vue-island>ok</vue-island>') }
-    return new Response('<input name="password">')
+    return new Response('<form action="/password"><input name="password"></form>')
   } })
   assert.match(await reader('https://example.myshopify.com/'), /vue-island/)
   assert.equal(requests.length, 3)
@@ -326,5 +290,5 @@ test('package metadata exposes CLI and includes install templates', async () => 
   assert.equal(pkg.repository, 'github:1291pravin/shopify-vue-ssr')
   assert.equal(pkg.bin['shopify-vue-ssr'], './src/cli.mjs')
   await cp(resolve(workspace, 'templates'), join(destination, 'templates'), { recursive: true })
-  assert.match(await readFile(join(destination, 'templates/ssr-sync.yml'), 'utf8'), /repository_dispatch/)
+  assert.match(await readFile(join(destination, 'templates/AGENTS.md'), 'utf8'), /prerender/)
 })

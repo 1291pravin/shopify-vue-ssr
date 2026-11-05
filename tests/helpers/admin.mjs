@@ -4,7 +4,7 @@ export const fragmentDefinition = { id: 'fragment-definition', access: { storefr
   { key: 'component', type: { name: 'single_line_text_field' }, validations: [] },
   { key: 'build', type: { name: 'single_line_text_field' }, validations: [] },
 ], capabilities: { publishable: { enabled: false } } }
-export const buildDefinition = { id: 'build-definition', access: { storefront: 'NONE' }, fieldDefinitions: ['first_seen', 'last_seen'].map(key => ({ key, type: { name: 'date_time' }, validations: [] })), capabilities: { publishable: { enabled: false } } }
+export const buildDefinition = { id: 'build-definition', access: { storefront: 'NONE' }, fieldDefinitions: ['first_seen', 'last_seen'].map(key => ({ key, type: { name: 'date_time' }, validations: [] })).concat([{ key: 'themes', type: { name: 'json' }, validations: [] }]), capabilities: { publishable: { enabled: false } } }
 export function withHistory(fragmentAdmin) {
   return async (query, vars, mutation) => {
     if (query === operations.build) return { metaobjectByHandle: null }

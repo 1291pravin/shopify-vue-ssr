@@ -8,7 +8,7 @@ Use plain hyphens. Commit with the configured Git user and no attribution traile
 ## Layout
 
 - `src/` contains native ESM CLI, Vite plugin, client runtime, renderer and cache tools.
-- `templates/` contains files installed by `init`. Its AGENTS.md guides theme repairs.
+- `templates/` contains snippets and guidance installed by `setup`.
 - `tests/` contains Node test-runner tests with temporary fixtures and mocked Admin calls.
 - `example/` contains an original three-island Vue theme and public props fixtures.
 - `docs/how-it-works.md` describes request flow and cache identity.
@@ -27,3 +27,18 @@ Preserve exact props bytes for keys, deterministic server/initial client output,
 verification before writes, build confirmation and cleanup guards. Keep store
 credentials and reports isolated. New public exports need usable declarations.
 Validate changes through the CLI and installed package as well as direct functions.
+
+## Public workflow
+
+- Commands are setup, build, prerender, check and repro. Keep --help and README
+  flags in agreement. Do not ship CI workflows or issue automation.
+- Setup is interactive for app creation/linking and release. Obtain credentials
+  through Shopify CLI; never request pasted secrets. The app and store must share
+  a Shopify organization. Keep the store auth CLI alternative usable.
+- Build before theme deployment. Prerender verifies matching deployed code before
+  storing rendered HTML. Theme ids are history metadata; cache keys use code builds.
+- Capture bounded, deduplicated real props per store for optional offline check.
+  Fixtures are optional. Check with no props is a successful first run with a hint.
+- Delete cache data only through prerender --cleanup. Dry-run previews deletion;
+  preserve build confirmation, recent observed themes, full-crawl and size guards.
+- Do not push or create remote resources unless explicitly instructed by the owner.

@@ -29,8 +29,8 @@
       "types": "./src/server.d.ts",
       "default": "./src/server.mjs"
     },
-    "./key": "./src/key.mjs",
-    "./sync": "./src/sync.mjs"
+    "./key": { "types": "./src/key.d.ts", "default": "./src/key.mjs" },
+    "./prerender": { "types": "./src/prerender.d.ts", "default": "./src/prerender.mjs" }
   },
   "scripts": {
     "test": "node --test tests/*.test.mjs",
@@ -48,6 +48,7 @@
     "jsdom": "^29.1.1",
     "magic-string": "^0.30.21",
     "parse5": "^8.1.0",
+    "smol-toml": "^1.9.1",
     "tinyglobby": "^0.2.17"
   },
   "engines": {

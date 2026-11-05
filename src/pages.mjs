@@ -30,16 +30,57 @@ export function verifyIsland(island, buildId) {
   return props
 }
 export function deployedBuild(html, islands) {
-  const ids = [...html.matchAll(/data-ssr-build="([a-f0-9]{64})"/g)].map(match => match[1])
-  const meta = html.match(/<meta\s+name="ssr-build-id"\s+content="([a-f0-9]{64})"/i)
-  if (meta) ids.push(meta[1])
+  const ids = []
+  const visit = node => {
+    const id = attr(node, 'data-ssr-build') ?? (node.tagName === 'meta' && attr(node, 'name') === 'ssr-build-id' ? attr(node, 'content') : null)
+    if (id != null) ids.push(id)
+    node.childNodes?.forEach(visit)
+  }
+  visit(parse(html))
+  if (ids.some(id => !/^[a-f0-9]{64}$/.test(id))) return null
   if (ids.length && new Set(ids).size === 1) return ids[0]
   // Old captures have no explicit marker, so they cannot prove a current build.
   return null
 }
 
+export function pageThemeId(html) {
+  const match = html.match(/(?:Shopify\.theme\s*=\s*\{[^}]*?["']?id["']?\s*:\s*["']?(\d+)|<meta\b[^>]*name=["']ssr-theme-id["'][^>]*content=["'](\d+))/i)
+  return match ? match[1] ?? match[2] : null
+}
+
+export function previewUrl(input, theme) {
+  if (!theme || !/^https?:\/\//i.test(input)) return input
+  const url = new URL(input)
+  url.searchParams.set('preview_theme_id', String(theme))
+  return url.href
+}
+
+function passwordForm(html) {
+  let form
+  const visit = node => {
+    if (node.tagName === 'form') {
+      let password = false, storefront = false
+      const inputs = child => {
+        if (child.tagName === 'input') {
+          password ||= ['password', 'storefront_password'].includes(attr(child, 'name'))
+          storefront ||= attr(child, 'name') === 'form_type' && attr(child, 'value') === 'storefront_password'
+        }
+        child.childNodes?.forEach(inputs)
+      }
+      inputs(node)
+      if (storefront || (password && /\/password(?:[?#]|$)/.test(attr(node, 'action') ?? ''))) form ??= node
+    }
+    node.childNodes?.forEach(visit)
+  }
+  visit(parse(html))
+  return form
+}
+const passwordPage = html => Boolean(passwordForm(html))
+const challengePage = html => /<title[^>]*>[^<]*(?:challenge|just a moment)|id=["'](?:challenge-form|captcha_form)|action=["'][^"']*\/challenge/i.test(html)
+const gateError = reason => new Error(`${reason}. Set SHOPIFY_STOREFRONT_PASSWORD (or --password-env NAME). If login is blocked by a challenge, use saved .html files with prerender.`)
+
 export function createPageReader({ fetcher = fetch, password = process.env.SHOPIFY_STOREFRONT_PASSWORD } = {}) {
-  const jar = new CookieJar(), loggedIn = new Set()
+  const jar = new CookieJar(), logins = new Map()
   async function request(url, options = {}, redirects = 0) {
     if (redirects > 8) throw new Error('Too many storefront redirects')
     const cookie = await jar.getCookieString(url)
@@ -50,19 +91,34 @@ export function createPageReader({ fetcher = fetch, password = process.env.SHOPI
       if (next.origin !== new URL(url).origin) throw new Error('Refusing cross-origin storefront redirect')
       return request(next.href, response.status === 307 || response.status === 308 ? options : {}, redirects + 1)
     }
+    const html = await response.text()
+    if (challengePage(html)) throw gateError('Storefront challenge page cannot be authenticated automatically')
+    if ([403, 429].includes(response.status)) throw gateError(`Storefront access blocked (HTTP ${response.status})`)
     if (!response.ok) throw new Error(`Fetch HTTP ${response.status}: ${url}`)
-    return response.text()
+    return html
   }
   return async input => {
     if (!/^https?:\/\//i.test(input)) return readFile(input, 'utf8')
     const url = new URL(input)
     let html = await request(input)
-    if (/name=["'](?:password|storefront_password)["']/i.test(html)) {
-      if (!password || loggedIn.has(url.origin)) throw new Error('Storefront password required or rejected')
-      await request(new URL('/password', input).href, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ form_type: 'storefront_password', utf8: '\u2713', password }).toString() })
-      loggedIn.add(url.origin)
+    if (passwordPage(html)) {
+      if (!password) throw gateError('Storefront password required')
+      if (!logins.has(url.origin)) logins.set(url.origin, (async () => {
+        const form = passwordForm(html)
+        const action = new URL(form ? attr(form, 'action') || '/password' : '/password', input)
+        if (action.origin !== url.origin || action.protocol !== url.protocol) throw gateError('Refusing cross-origin password form')
+        const fields = new URLSearchParams({ form_type: 'storefront_password', utf8: '\u2713' })
+        const collect = node => {
+          if (node.tagName === 'input' && attr(node, 'name') && attr(node, 'type') === 'hidden') fields.set(attr(node, 'name'), attr(node, 'value') ?? '')
+          node.childNodes?.forEach(collect)
+        }
+        if (form) collect(form)
+        fields.set('password', password)
+        await request(action.href, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: fields.toString() })
+      })())
+      await logins.get(url.origin)
       html = await request(input)
-      if (/name=["'](?:password|storefront_password)["']/i.test(html)) throw new Error('Storefront password rejected')
+      if (passwordPage(html)) throw gateError('Storefront password rejected')
     }
     return html
   }
@@ -79,6 +135,7 @@ export async function sitemapUrls(url, reader, visited = new Set(), origin = new
   if (/<sitemapindex\b/.test(xml)) {
     const pages = []
     for (const child of urls) pages.push(...await sitemapUrls(child, reader, visited, origin))
+    if (!pages.length) throw new Error('Empty or cyclic sitemap index does not authorize a full crawl')
     return [...new Set(pages)]
   }
   if (!urls.length) throw new Error('Empty sitemap does not authorize a full crawl')

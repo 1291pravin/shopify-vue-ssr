@@ -29,9 +29,9 @@ export function normalizeOptions(options, root) {
     if (!/^[a-z][a-z0-9_]*$/i.test(id) || suffixes.has(id.toUpperCase())) throw new Error(`Invalid or duplicate store id "${id}": use a letter followed by letters, digits or underscores; ids must be unique ignoring case`)
     suffixes.add(id.toUpperCase())
     if (!store || typeof store !== 'object' || Array.isArray(store)) throw new Error(`Store ${id} needs { domain, sitemap, credentials? }`)
-    if (options.stores !== undefined && (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(store.domain ?? '') || typeof store.sitemap !== 'string' || !URL.canParse(store.sitemap) || new URL(store.sitemap).protocol !== 'https:')) throw new Error(`Store ${id} needs a .myshopify.com domain and HTTPS sitemap URL`)
+    if (options.stores !== undefined && (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i.test(store.domain ?? '') || (store.sitemap !== undefined && (!URL.canParse(store.sitemap) || new URL(store.sitemap).protocol !== 'https:')))) throw new Error(`Store ${id} needs a .myshopify.com domain and optional HTTPS sitemap URL`)
     if (store.credentials !== undefined && !/^[a-z][a-z0-9_]*$/i.test(store.credentials)) throw new Error(`Invalid credentials suffix for store ${id}`)
-    config.stores[id] = { ...store, ...(id === 'default' && process.env.SHOPIFY_STORE ? { domain: process.env.SHOPIFY_STORE } : {}) }
+    config.stores[id] = { ...store, ...(options.stores === undefined && process.env.SHOPIFY_STORE ? { domain: process.env.SHOPIFY_STORE } : {}) }
   }
   return Object.keys(config.stores).length === 1 ? selectStore(config) : config
 }
@@ -39,7 +39,7 @@ export function normalizeOptions(options, root) {
 // Builds are shared. Only store operations select a domain and report directory.
 export function selectStore(config, id) {
   const ids = Object.keys(config.stores)
-  if (!id && ids.length !== 1) throw new Error(`Several stores configured (${ids.join(', ')}). Select --store <id> or --all-stores for init/doctor`)
+  if (!id && ids.length !== 1) throw new Error(`Several stores configured (${ids.join(', ')}). Select --store <id>`)
   id ??= ids[0]
   if (!Object.hasOwn(config.stores, id)) throw new Error(`Unknown store "${id}". Configured stores: ${ids.join(', ')}`)
   const store = config.stores[id]
@@ -69,14 +69,14 @@ async function flatten(plugins = []) {
   return result
 }
 
-export async function loadConfig(root = process.cwd(), configFile, { allowMissingPlugin = false } = {}) {
+export async function loadConfig(root = process.cwd(), configFile) {
   root = resolve(root)
   const loaded = await loadConfigFromFile({ command: 'build', mode: 'production', isSsrBuild: false }, configFile ? resolve(root, configFile) : undefined, root)
   const plugins = (await flatten(loaded?.config.plugins)).filter(plugin => plugin.name === 'shopify-vue-ssr')
   if (plugins.length > 1) throw new Error('Register shopifyVueSsr only once in your Vite config')
   const plugin = plugins[0]
   const missingPlugin = !plugin ? `Missing shopify-vue-ssr plugin in ${loaded?.path ?? configFile ?? 'vite.config.ts'}. Add:\n\n${pluginSnippet}` : undefined
-  if (missingPlugin && !allowMissingPlugin) throw new Error(missingPlugin)
+  if (missingPlugin) throw new Error(missingPlugin)
   const config = normalizeOptions(plugin?.api?.shopifyVueSsrOptions ?? {}, root)
-  return { ...config, configFile: loaded?.path, missingPlugin }
+  return { ...config, configFile: loaded?.path }
 }

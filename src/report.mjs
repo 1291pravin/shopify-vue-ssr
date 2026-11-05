@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
@@ -39,6 +39,8 @@ export async function finishReport(report, config) {
     `${counts.islands} islands: ${counts.hit} hits, ${counts.filled} filled, ${counts.failed} failed, ${counts.skipped} skipped. Coverage: ${(counts.coverage * 100).toFixed(1)}%.`,
     `Full sitemap crawl: ${report.fullCrawl ? 'yes' : 'no'}. Failures: ${counts.failures}.`, '', '| Type | Page / component | Why | Reproduce |', '| --- | --- | --- | --- |']
   for (const f of report.failures) lines.push(`| ${f.type} | ${escape(f.page)} / ${escape(f.component)} | ${escape(f.message)} | \`npx shopify-vue-ssr repro ${f.id} --store ${report.storeId}\` |`)
+  if (report.hint) lines.push('', report.hint)
+  for (const warning of report.warnings ?? []) lines.push('', `Warning: ${escape(warning)}`)
   await writeFile(join(dir, 'summary.md'), lines.join('\n') + '\n')
   // Preserve the latest *complete* sitemap inventory across partial/failed runs.
   // Build-mismatched or unreachable pages never authorize pruning.
@@ -46,4 +48,3 @@ export async function finishReport(report, config) {
   if (report.sitemap) await writeFile(join(dir, 'latest-sitemap-run.json'), JSON.stringify(report, null, 2) + '\n')
   return report
 }
-export const readReport = async file => JSON.parse(await readFile(file, 'utf8'))

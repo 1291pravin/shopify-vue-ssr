@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {%- capture ssr_build -%}{%- render 'ssr-build-id' -%}{%- endcapture -%}
+    <meta name="ssr-build-id" content="{{ ssr_build }}">
     <title>{{ page_title | escape }}</title>
     <link rel="canonical" href="{{ canonical_url }}">
     {{ content_for_header }}

@@ -1,14 +1,12 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, writeFile, rm, access } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, rm, access, symlink, unlink } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { build } from 'vite'
 import { resolveIslands, shopifyVueSsr } from '../src/plugin.mjs'
 import { loadConfig } from '../src/config.mjs'
-import { initProject } from '../src/init.mjs'
-import { definitions } from './helpers/admin.mjs'
 import { renderAndVerify } from '../src/verify.mjs'
 
 const exec = promisify(execFile)
@@ -69,7 +67,7 @@ test('invalid names fail for map keys and filenames; empty selections fail', asy
   await assert.rejects(resolveIslands({ islands: 'src/invalid/*.vue' }, root), /Invalid island component name "bad-name"/)
   await assert.rejects(resolveIslands({ islands: [] }, root), /No islands configured/)
 })
-test('missing Vite plugin gives the exact registration snippet; init mode permits it', async () => {
+test('missing Vite plugin gives the exact registration snippet', async () => {
   await put('missing.vite.ts', 'export default { plugins: [] }')
   await assert.rejects(loadConfig(root, 'missing.vite.ts'), error => {
     assert.match(error.message, /Missing shopify-vue-ssr plugin/)
@@ -77,22 +75,15 @@ test('missing Vite plugin gives the exact registration snippet; init mode permit
     assert.match(error.message, /islands: 'src\/sections\/\*\*\/\*\.vue'/)
     return true
   })
-  assert.match((await loadConfig(root, 'missing.vite.ts', { allowMissingPlugin: true })).missingPlugin, /shopifyVueSsr/)
 })
-test('init preserves Vite config, workflow, guide and build ID across repeated runs; writes no separate config', async () => {
-  const local = await loadConfig(root, 'missing.vite.ts', { allowMissingPlugin: true })
-  const admin = async (query, _v, mutation) => { assert.equal(mutation, undefined); return definitions(query) }
-  const first = await initProject(local, { admin })
-  assert.ok(first.next.some(step => step.includes(local.missingPlugin)))
-  await writeFile(join(root, 'theme/snippets/ssr-build-id.liquid'), 'keep-build-id')
-  await writeFile(join(root, 'AGENTS.md'), 'keep-guide')
-  await writeFile(join(root, '.github/workflows/ssr-sync.yml'), 'keep-workflow')
-  await initProject(local, { admin })
-  assert.equal(await readFile(join(root, 'missing.vite.ts'), 'utf8'), 'export default { plugins: [] }')
-  assert.equal(await readFile(join(root, 'AGENTS.md'), 'utf8'), 'keep-guide')
-  assert.equal(await readFile(join(root, '.github/workflows/ssr-sync.yml'), 'utf8'), 'keep-workflow')
-  assert.equal(await readFile(join(root, 'theme/snippets/ssr-build-id.liquid'), 'utf8'), 'keep-build-id')
-  assert.equal(await exists(join(root, 'ssr.config.mjs')), false)
+
+test('CLI executes through an npm-style linked package directory', async () => {
+  const linked = join(root, 'linked-package')
+  await symlink(workspace, linked, process.platform === 'win32' ? 'junction' : 'dir')
+  try {
+    const result = await exec(process.execPath, [join(linked, 'src/cli.mjs'), '--help'])
+    assert.match(result.stdout, /<setup\|build\|prerender\|check\|repro>/)
+  } finally { await unlink(linked) }
 })
 test('ordinary Vite builds receive no package build overrides', async () => {
   const plugin = shopifyVueSsr({ client: false })
@@ -133,8 +124,6 @@ export default defineConfig({
   const config = await loadConfig(root, 'config/theme.vite.ts')
   assert.equal(config.client, false)
   assert.equal(config.configFile, join(root, 'config/theme.vite.ts').replaceAll('\\', '/'))
-  const listed = await exec(process.execPath, [cli, 'islands', '--root', root, '--config', 'config/theme.vite.ts'])
-  assert.equal(listed.stdout.trim(), 'ProductHero -> src/sections/Hero.vue')
   const built = await exec(process.execPath, [cli, 'build', '--root', root, '--config', 'config/theme.vite.ts'])
   assert.match(built.stdout, /^Islands: 1\r?\n/)
   assert.match(built.stdout, /SSR build id: [a-f0-9]{64}/)
@@ -149,8 +138,7 @@ export default defineConfig({
   assert.match(await readFile(join(config.outDir, 'verify.css'), 'utf8'), /alias-proof/)
   assert.ok(JSON.parse(await readFile(join(config.outDir, 'server-entry.mjs.map'), 'utf8')).sources.some(file => file.endsWith('Hero.vue')))
   const checked = await exec(process.execPath, [cli, 'check', '--root', root, '--config', 'config/theme.vite.ts'])
-  assert.match(checked.stdout, /^Islands: 1\r?\n/)
-  assert.match(checked.stdout, /Check: (\d+) of \1 fixture cases passed, 0 failed/)
+    assert.match(checked.stdout, /Check \[default\]: (\d+) of \1 props cases passed, 0 failed/)
   const checkedJson = await exec(process.execPath, [cli, 'check', '--root', root, '--config', 'config/theme.vite.ts', '--json'])
   assert.equal(JSON.parse(checkedJson.stdout.split('\n').find(line => line.startsWith('{'))).failed, 0)
   await build({ root, configFile: config.configFile, logLevel: 'silent' })

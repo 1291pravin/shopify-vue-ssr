@@ -19,6 +19,7 @@ export async function buildProject(config) {
   if (!config.configFile) throw new Error('Build requires a Vite config with shopifyVueSsr registered')
   const islands = await resolveIslands(config, root)
   console.log(`Islands: ${islands.length}`)
+  for (const island of islands) console.log(`  ${island.name} -> ${island.file.slice(root.length + 1).replaceAll('\\', '/')}`)
   const base = {
     configFile: config.configFile, root, logLevel: 'warn',
     plugins: [{

@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { operations, createAdmin } from './admin.mjs'
 import { pruneOptions } from './config.mjs'
-import { createPageReader, deployedBuild, findIslands } from './pages.mjs'
+import { createPageReader, deployedBuild, findIslands, pageThemeId } from './pages.mjs'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const values = entry => Object.fromEntries((entry.fields ?? []).map(field => [field.key, field.value]))
@@ -75,29 +75,49 @@ export async function bulkDelete(admin, ids, { pause = sleep, maxPolls = 360, be
   }
 }
 
-export function selectPrunable(entries, builds, { deployedBuildId, crawl, latestRun, now = Date.now(), ...options } = {}) {
+export function selectPrunable(entries, builds, { deployedBuildId, crawl, latestRun, themeId, now = Date.now(), ...options } = {}) {
   const settings = pruneOptions(options)
   const result = { selected: [], deletedBuilds: [], keptBuilds: [], counts: { oldBuilds: 0, staleContent: 0, legacy: 0 }, retained: { seen: 0, grace: 0, invalidTimestamp: 0, crawlGuard: 0 }, skipped: [], blocked: false }
   if (!deployedBuildId) return { ...result, blocked: true, skipped: ['Deployed build could not be confirmed; nothing selected'] }
   const history = new Map(builds.map(build => [build.handle, Date.parse(values(build).last_seen) || 0]))
   const ids = new Set([...history.keys(), ...entries.map(entry => values(entry).build).filter(Boolean)])
   ids.delete(deployedBuildId)
-  result.keptBuilds = [deployedBuildId, ...[...ids].sort((a, b) => (history.get(b) ?? 0) - (history.get(a) ?? 0) || a.localeCompare(b)).slice(0, settings.keepBuilds - 1)]
+  const cutoff = now - settings.graceDays * 86400000
+  // Only the latest observation of each theme within the history window pins a
+  // build. Tied observations protect both builds. Active themes may exceed the
+  // keepBuilds minimum, which is intentional.
+  const themes = new Map()
+  try {
+    for (const build of builds) {
+      const observations = JSON.parse(values(build).themes ?? '{}')
+      if (!observations || Array.isArray(observations) || typeof observations !== 'object') throw new Error('Invalid themes history')
+      for (const [id, at] of Object.entries(observations)) {
+        const time = Date.parse(at)
+        if (!Number.isFinite(time)) throw new Error('Invalid theme history timestamp')
+        if (time < cutoff) continue
+        const previous = themes.get(id)
+        if (!previous || time > previous.time) themes.set(id, { time, builds: [build.handle] })
+        else if (time === previous.time) previous.builds.push(build.handle)
+      }
+    }
+  } catch (error) { return { ...result, blocked: true, skipped: [`${error.message}; nothing selected`] } }
+  const recent = [...ids].sort((a, b) => (history.get(b) ?? 0) - (history.get(a) ?? 0) || a.localeCompare(b)).slice(0, settings.keepBuilds - 1)
+  result.keptBuilds = [...new Set([deployedBuildId, ...recent, ...[...themes.values()].flatMap(theme => theme.builds)])]
   const kept = new Set(result.keptBuilds)
   result.deletedBuilds = [...ids].filter(id => !kept.has(id)).sort()
-  const clean = crawl?.fullCrawl && crawl.sitemap && Array.isArray(crawl.failures) && !crawl.failures.length && crawl.buildId === deployedBuildId &&
+  const sharedByOtherTheme = [...themes].some(([id, theme]) => id !== String(themeId ?? crawl?.theme ?? crawl?.pages?.find(page => page.themeId)?.themeId) && theme.builds.includes(deployedBuildId))
+  const clean = !sharedByOtherTheme && crawl?.fullCrawl && crawl.sitemap && Array.isArray(crawl.failures) && !crawl.failures.length && crawl.buildId === deployedBuildId &&
     (!latestRun || (latestRun.runId === crawl.runId && latestRun.fullCrawl && !latestRun.failures?.length))
   // Seen keys protect the deployed build even when a newer crawl failed.
   const seen = new Set([crawl, latestRun].filter(run => run?.buildId === deployedBuildId).flatMap(run => run.pages?.flatMap(page => page.islands.map(island => island.key)) ?? []))
   if (!clean) result.skipped.push('Stale content: latest full sitemap run is missing, failed, incomplete or belongs to another build')
-  const cutoff = now - settings.graceDays * 86400000
   for (const entry of entries) {
     const build = values(entry).build
     if (seen.has(entry.handle)) { result.retained.seen++; continue }
     const old = Number.isFinite(Date.parse(entry.updatedAt)) && Date.parse(entry.updatedAt) < cutoff
     let rule
     if (build && !kept.has(build)) rule = 'oldBuilds'
-    else if (build && clean && !seen.has(entry.handle) && old && Date.parse(entry.updatedAt) < Date.parse(crawl.time)) rule = 'staleContent'
+    else if (build === deployedBuildId && clean && !seen.has(entry.handle) && old && Date.parse(entry.updatedAt) < Date.parse(crawl.time)) rule = 'staleContent'
     else if (!build && old) rule = 'legacy'
     if (rule) { result.counts[rule]++; result.selected.push({ id: entry.id, handle: entry.handle, build: build || null, bytes: bytes(entry), rule }) }
     else if (!Number.isFinite(Date.parse(entry.updatedAt))) result.retained.invalidTimestamp++
@@ -117,7 +137,7 @@ async function optionalJson(file) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error }
 }
 
-export async function prune(config, { yes = false, admin, reader = createPageReader(), now = Date.now(), ...overrides } = {}) {
+export async function prune(config, { yes = false, admin, reader = createPageReader(), now = Date.now(), probe, expectedBuildId, themeId, ...overrides } = {}) {
   const settings = pruneOptions({ ...config.prune, ...overrides })
   const report = { schemaVersion: 1, command: 'prune', time: new Date(now).toISOString(), storeId: config.storeId ?? 'default', store: config.store,
     dryRun: !yes, options: settings, deployedBuildId: null, selected: [], keptBuilds: [], deletedBuilds: [], counts: { oldBuilds: 0, staleContent: 0, legacy: 0 },
@@ -131,11 +151,13 @@ export async function prune(config, { yes = false, admin, reader = createPageRea
       if (value.store !== config.store || value.storeId !== report.storeId) throw new Error('Crawl report belongs to a different store')
       if (config.sitemap && value.sitemap !== config.sitemap) throw new Error('Crawl report belongs to a different sitemap')
     }
-    const probe = new URL('/', config.sitemap ?? `https://${config.store}`).href
+    probe ??= new URL('/', config.sitemap ?? `https://${config.store}`).href
     const confirm = async () => {
       const html = await reader(probe)
       const id = deployedBuild(html, findIslands(html))
       if (!id) throw new Error('Fresh storefront page contains no unambiguous build marker')
+      if (expectedBuildId && id !== expectedBuildId) throw new Error('Fresh storefront build differs from the local build; deploy the matching build before cleanup')
+      if (themeId && pageThemeId(html) && pageThemeId(html) !== String(themeId)) throw new Error('Fresh storefront theme differs from --theme; cleanup stopped')
       return id
     }
     try { report.deployedBuildId = await confirm() }
@@ -144,7 +166,7 @@ export async function prune(config, { yes = false, admin, reader = createPageRea
     entries = await bulkList(admin, 'ssr_fragment')
     builds = await bulkList(admin, 'ssr_build')
     report.before = { fragments: totals(entries), builds: totals(builds) }
-    const selection = selectPrunable(entries, builds, { ...settings, deployedBuildId: report.deployedBuildId, crawl, latestRun, now })
+    const selection = selectPrunable(entries, builds, { ...settings, deployedBuildId: report.deployedBuildId, crawl, latestRun, themeId, now })
     Object.assign(report, { ...selection, skipped: [...report.skipped, ...selection.skipped] })
     const history = builds.filter(build => selection.deletedBuilds.includes(build.handle))
     const selectedIds = new Set(selection.selected.map(entry => entry.id)), historyIds = new Set(history.map(build => build.id))

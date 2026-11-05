@@ -17,14 +17,17 @@ export const operations = {
   bulkDelete: `mutation DeleteMetaobjects($where: MetaobjectBulkDeleteWhereCondition!) { metaobjectBulkDelete(where: $where) { job { id done } userErrors { field message code } } }`,
   job: `query DeleteStatus($id: ID!) { job(id: $id) { id done } }`,
   nodes: `query DeletedObjects($ids: [ID!]!) { nodes(ids: $ids) { id } }`,
-  delete: `mutation Delete($id: ID!) { metaobjectDelete(id: $id) { deletedId userErrors { field message code } } }`,
 }
 
-export async function shopify(args, cwd) {
-  if (process.platform !== 'win32') return exec('shopify', args, { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+export async function shopifyCommand() {
+  if (process.platform !== 'win32') return ['shopify', []]
   const { stdout } = await exec('where.exe', ['shopify.cmd'], { windowsHide: true })
   const entry = join(dirname(stdout.trim().split(/\r?\n/)[0]), 'node_modules/@shopify/cli/bin/run.js')
-  return exec(process.execPath, [entry, ...args], { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+  return [process.execPath, [entry]]
+}
+export async function shopify(args, cwd, options = {}) {
+  const [command, prefix] = await shopifyCommand()
+  return exec(command, [...prefix, ...args], { cwd, windowsHide: true, maxBuffer: 16 * 1024 * 1024, ...options })
 }
 
 // Dev Dashboard apps exchange their client ID and secret for a 24-hour token (client credentials grant).
@@ -44,7 +47,7 @@ export function resolveCredentials(config, env = process.env) {
 // Scope caches to the environment and transport, then the store domain and credentials.
 // Shared apps must still exchange distinct tokens for each store.
 const tokenCaches = new WeakMap()
-export function createTokenSource(store, { fetcher = fetch, now = () => Date.now(), env = process.env, storeId, credentials } = {}) {
+export function createTokenSource(store, { fetcher = fetch, now = () => Date.now(), env = process.env, storeId, credentials, signal } = {}) {
   const selected = resolveCredentials({ storeId, credentials }, env)
   if (selected.adminToken) return async () => selected.adminToken
   if (!selected.clientId || !selected.clientSecret) return null
@@ -60,12 +63,11 @@ export function createTokenSource(store, { fetcher = fetch, now = () => Date.now
     if (entry.pending) return entry.pending
     entry.pending = (async () => {
       const response = await fetcher(`https://${store}/admin/oauth/access_token`, {
-        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        method: 'POST', signal, headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ grant_type: 'client_credentials', client_id: selected.clientId, client_secret: selected.clientSecret }),
       })
       if (!response.ok) {
-        const detail = (await response.text().catch(() => '')).slice(0, 300)
-        throw new Error(`Token request failed: HTTP ${response.status}${detail ? ` ${detail}` : ''}. The app and the store must be in the same Shopify organization, and the app must be installed on the store.`)
+        throw Object.assign(new Error(`Token request failed: HTTP ${response.status}. The app and the store must be in the same Shopify organization, and the app must be installed on the store.`), { status: response.status })
       }
       const body = await response.json()
       if (!body.access_token) throw new Error(`Token request for ${store} returned no access token`)
@@ -133,7 +135,7 @@ export async function ensureDefinition(admin) {
   if (existing) {
     const fields = Object.fromEntries(existing.fieldDefinitions.map(field => [field.key, field]))
     if (existing.access.storefront !== 'PUBLIC_READ' || fields.html?.type.name !== 'multi_line_text_field' || fields.component?.type.name !== 'single_line_text_field' ||
-      fields.html?.validations?.length || (fields.build && (fields.build.type.name !== 'single_line_text_field' || fields.build.validations?.length)) || existing.capabilities?.publishable?.enabled) throw new Error('Existing ssr_fragment definition is incompatible; left unchanged')
+      fields.html?.validations?.length || fields.component?.validations?.length || (fields.build && (fields.build.type.name !== 'single_line_text_field' || fields.build.validations?.length)) || existing.capabilities?.publishable?.enabled) throw new Error(`Existing ssr_fragment definition is incompatible; expected PUBLIC_READ, html: multi_line_text_field, component/build: single_line_text_field, no validations or publishable capability. Received: ${JSON.stringify(existing)}; left unchanged`)
     if (!fields.build) {
       const payload = (await admin(operations.updateDefinition, { id: existing.id, definition: { fieldDefinitions: [{ create: { name: 'Build', key: 'build', type: 'single_line_text_field' } }] } }, true)).metaobjectDefinitionUpdate
       if (!payload?.metaobjectDefinition?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
@@ -160,20 +162,31 @@ export async function ensureBuildDefinition(admin) {
   const existing = (await admin(operations.buildDefinition)).metaobjectDefinitionByType
   if (existing) {
     const fields = Object.fromEntries(existing.fieldDefinitions.map(field => [field.key, field]))
-    if (existing.access.storefront !== 'NONE' || existing.capabilities?.publishable?.enabled || ['first_seen', 'last_seen'].some(key => fields[key]?.type.name !== 'date_time' || fields[key]?.validations?.length)) throw new Error('Existing ssr_build definition is incompatible; left unchanged')
-    return { created: false, id: existing.id }
+    if (existing.access.storefront !== 'NONE' || existing.capabilities?.publishable?.enabled || ['first_seen', 'last_seen'].some(key => fields[key]?.type.name !== 'date_time' || fields[key]?.validations?.length) || (fields.themes && (fields.themes.type.name !== 'json' || fields.themes.validations?.length))) throw new Error(`Existing ssr_build definition is incompatible; expected NONE access, date_time first_seen/last_seen and json themes, no validations or publishable capability. Received: ${JSON.stringify(existing)}; left unchanged`)
+    if (!fields.themes) {
+      const payload = (await admin(operations.updateDefinition, { id: existing.id, definition: { fieldDefinitions: [{ create: { name: 'Themes', key: 'themes', type: 'json' } }] } }, true)).metaobjectDefinitionUpdate
+      if (!payload?.metaobjectDefinition?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
+    }
+    return { created: false, updated: !fields.themes, id: existing.id }
   }
-  const definition = { name: 'SSR build', type: 'ssr_build', access: { storefront: 'NONE' }, fieldDefinitions: ['first_seen', 'last_seen'].map(key => ({ name: key, key, type: 'date_time' })) }
+  const definition = { name: 'SSR build', type: 'ssr_build', access: { storefront: 'NONE' }, fieldDefinitions: [...['first_seen', 'last_seen'].map(key => ({ name: key, key, type: 'date_time' })), { name: 'Themes', key: 'themes', type: 'json' }] }
   const payload = (await admin(operations.create, { definition }, true)).metaobjectDefinitionCreate
   if (!payload?.metaobjectDefinition?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
   return { created: true, id: payload.metaobjectDefinition.id }
 }
 
-export async function touchBuild(admin, buildId, now = Date.now()) {
+export async function touchBuild(admin, buildId, now = Date.now(), themeId) {
   const handle = { type: 'ssr_build', handle: buildId }
   const existing = (await admin(operations.build, { handle })).metaobjectByHandle
   const fields = [{ key: 'last_seen', value: new Date(now).toISOString() }]
   if (!existing?.fields?.find(field => field.key === 'first_seen')?.value) fields.push({ key: 'first_seen', value: new Date(now).toISOString() })
+  if (themeId != null) {
+    const value = existing?.fields?.find(field => field.key === 'themes')?.value
+    const themes = value ? JSON.parse(value) : {}
+    if (!themes || Array.isArray(themes) || typeof themes !== 'object') throw new Error('Invalid ssr_build themes history; rerun setup or repair the history record')
+    themes[String(themeId)] = new Date(now).toISOString()
+    fields.push({ key: 'themes', value: JSON.stringify(themes) })
+  }
   const payload = (await admin(operations.upsertBuild, { handle, metaobject: { fields } }, true)).metaobjectUpsert
   if (!payload?.metaobject?.id || payload.userErrors?.length) throw new Error(JSON.stringify(payload?.userErrors ?? payload))
   return payload.metaobject

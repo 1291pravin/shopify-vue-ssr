@@ -5,7 +5,7 @@ export interface ShopifyVueSsrOptions {
   exclude?: string[]
   store?: string
   sitemap?: string
-  stores?: Record<string, { domain: string; sitemap: string; credentials?: string }>
+  stores?: Record<string, { domain: string; sitemap?: string; credentials?: string }>
   themeDir?: string
   widths?: number[]
   client?: false | { entry: string }
