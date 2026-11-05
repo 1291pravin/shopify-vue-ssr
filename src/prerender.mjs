@@ -58,6 +58,9 @@ export async function prerender(inputs, config, { dryRun = false, cleanup = fals
   let pages = inputs.map(input => resolve(config.root, input))
   if (sitemap) {
     try {
+      // Open the homepage first: on a password-protected store this logs in through the password
+      // page and sets the session (and preview theme) cookies that sitemap.xml needs.
+      await reader(previewUrl(new URL('/', inputs[0]).href, theme))
       pages = await sitemapUrls(sitemap, reader)
       report.fullCrawl = !limit || pages.length <= limit
     } catch (error) { addFailure(report, { page: sitemap, component: null, key: null }, 'fetch-error', error); return finishReport(report, config) }

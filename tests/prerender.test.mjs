@@ -78,7 +78,10 @@ test('prerender expands same-host sitemap indexes, previews every page, verifies
   assert.equal(history.length, 1)
   assert.ok(JSON.parse(history[0].vars.metaobject.fields.find(field => field.key === 'themes').value)['42'])
   assert.equal(mock.calls.find(call => call.query === operations.upsert).vars.html, '<p>local render</p>')
-  assert.equal(requests.filter(url => url.includes('preview_theme_id')).length, 2)
+  // Two sitemap pages plus the homepage opened before the sitemap (session and preview cookies).
+  assert.equal(requests.filter(url => url.includes('preview_theme_id')).length, 3)
+  assert.equal(requests[0], `${site}/?preview_theme_id=42`)
+  assert.equal(requests[1], `${site}/sitemap.xml`)
 }))
 
 test('sitemap indexes reject foreign hosts, cyclic indexes, empty and non-XML responses safely', async () => {
@@ -302,3 +305,22 @@ test('storefront 429 is retried with backoff before failing', async () => {
   const always = createPageReader({ password: '', retries: 2, pause: async () => {}, fetcher: async () => new Response('', { status: 429 }) })
   await assert.rejects(always('https://example.com/'), /rate limited \(HTTP 429\) after 2 retries.*--concurrency/)
 })
+
+test('password stores: the homepage is opened first so sitemap.xml is fetched with the session cookie', () => temp(async (config, buildId) => {
+  const order = []
+  const fetcher = async (url, options) => {
+    order.push(`${options.method ?? 'GET'} ${new URL(url).pathname}`)
+    if (options.method === 'POST') return new Response('', { status: 302, headers: { location: '/', 'set-cookie': 'storefront=ok; Path=/; Secure; HttpOnly' } })
+    const loggedIn = options.headers.Cookie?.includes('storefront=ok')
+    // Seen on real stores: before login, sitemap.xml does not show the password form, only pages do.
+    if (url.endsWith('/sitemap.xml')) return loggedIn ? new Response(xml([`${site}/one`])) : new Response('Not found', { status: 404 })
+    if (!loggedIn) return new Response('<form method="post" action="/password"><input type="hidden" name="authenticity_token" value="mock-csrf"><input name="password"></form>')
+    return new Response(island(buildId, { hit: true }))
+  }
+  const report = await prerender([site], config, { dryRun: true, log: quiet, reader: createPageReader({ fetcher, password: 'mock-password' }) })
+  assert.equal(report.failures.length, 0)
+  assert.equal(report.counts.hit, 1)
+  assert.equal(order[0], 'GET /')
+  assert.ok(order.indexOf('POST /password') < order.indexOf('GET /sitemap.xml'))
+  assert.equal(order.filter(entry => entry === 'GET /sitemap.xml').length, 1)
+}))

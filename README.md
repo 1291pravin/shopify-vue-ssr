@@ -425,8 +425,10 @@ build meta tag to prove that a full crawl is safe for cleanup.
 ## Password-protected stores
 
 Set `SHOPIFY_STOREFRONT_PASSWORD` in ignored `.env` or your secret manager, then run
-prerender normally. Never pass a password value on the command line. For another
-secret variable, select its **name**:
+prerender normally. Never pass a password value on the command line. Prerender opens
+the homepage first, logs in through the password page there, and then fetches
+`sitemap.xml` with that session (Shopify does not show the password form on the
+sitemap itself). For another secret variable, select its **name**:
 
 ```sh
 npx shopify-vue-ssr prerender https://example.com --password-env PREVIEW_PASSWORD
