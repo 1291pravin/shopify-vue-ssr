@@ -69,7 +69,7 @@ test('prerender expands same-host sitemap indexes, previews every page, verifies
     assert.equal(new URL(url).searchParams.get('preview_theme_id'), '42')
     return `<script>Shopify.theme = {"id":42,"role":"unpublished"};</script>` + island(buildId, { hit: url.includes('/shared') })
   }
-  const report = await prerender([site], config, { reader, theme: '42', admin: mock.admin, log: quiet, verify: async (_config, input) => { verified.push(input); return good() } })
+  const report = await prerender([site], config, { reader, cleanup: 'none', theme: '42', admin: mock.admin, log: quiet, verify: async (_config, input) => { verified.push(input); return good() } })
   assert.equal(report.fullCrawl, true); assert.equal(report.pages.length, 2)
   assert.equal(report.counts.filled, 1); assert.equal(report.counts.hit, 1)
   assert.equal(verified.length, 1); assert.equal(report.failures.length, 0)
@@ -100,7 +100,7 @@ test('limited sitemap runs cannot authorize stale cleanup and concurrency bounds
     await new Promise(accept => setImmediate(accept))
     active--; return island(buildId)
   }
-  const report = await prerender([site], config, { reader, limit: 4, concurrency: 2, admin: mock.admin, log: quiet, verify: async () => { rendered++; await new Promise(accept => setImmediate(accept)); return good() } })
+  const report = await prerender([site], config, { reader, cleanup: 'none', limit: 4, concurrency: 2, admin: mock.admin, log: quiet, verify: async () => { rendered++; await new Promise(accept => setImmediate(accept)); return good() } })
   assert.equal(report.fullCrawl, false); assert.equal(report.pages.length, 4)
   assert.ok(maximum <= 2); assert.equal(maximum, 2); assert.equal(rendered, 1)
   assert.equal(mock.calls.filter(call => call.query === operations.upsert).length, 1)
@@ -183,16 +183,20 @@ test('unregistered components stay client-rendered; over 20 unique registered ke
   assert.ok(samples.some(value => JSON.parse(value).exactProps === latestProps))
 }))
 
-test('cleanup runs only when explicitly requested, dry-run previews it, and failures block it', () => temp(async (config, buildId) => {
+test('sitemap runs purge by default, no-delete and saved files skip it, dry-run previews it, and failures block it', () => temp(async (config, buildId) => {
   const calls = [], base = { log: quiet, reader: async url => url.endsWith('/sitemap.xml') ? xml([`${site}/page`]) : island(buildId, { hit: true }), verify: good,
     cleanupCache: async (_config, options) => { calls.push(options); return { blocked: false, failures: [] } }, admin: mockAdmin().admin }
-  await prerender([site], config, base); assert.equal(calls.length, 0)
-  await prerender([site], config, { ...base, cleanup: true, dryRun: true }); assert.equal(calls.length, 1); assert.equal(calls[0].yes, false)
-  await prerender([site], config, { ...base, cleanup: true, theme: '42' }); assert.equal(calls.length, 2); assert.equal(calls[1].yes, true)
+  await prerender([site], config, { ...base, cleanup: 'none' }); assert.equal(calls.length, 0)
+  await writeFile(join(config.root, 'saved.html'), island(buildId, { hit: true }))
+  await prerender(['saved.html'], config, base); assert.equal(calls.length, 0)
+  await prerender([site], config, { ...base, dryRun: true }); assert.equal(calls.length, 1); assert.equal(calls[0].yes, false); assert.equal(calls[0].mode, 'purge')
+  await prerender([site], config, { ...base, theme: '42' }); assert.equal(calls.length, 2); assert.equal(calls[1].yes, true); assert.equal(calls[1].mode, 'purge')
   assert.equal(calls[1].expectedBuildId, buildId); assert.match(calls[1].probe, /preview_theme_id=42/)
-  const failed = await prerender([site], config, { ...base, cleanup: true, reader: async () => { throw new Error('offline') } })
-  assert.equal(calls.length, 2); assert.equal(failed.failures.length, 1)
-  const blocked = await prerender([site], config, { ...base, cleanup: true, cleanupCache: async () => ({ blocked: true, skipped: ['safety cap'], failures: [] }) })
+  await prerender([site], config, { ...base, cleanup: 'recent' }); assert.equal(calls[2].mode, 'recent')
+  await assert.rejects(prerender([site], config, { ...base, cleanup: true }), /cleanup must be/)
+  const failed = await prerender([site], config, { ...base, reader: async () => { throw new Error('offline') } })
+  assert.equal(calls.length, 3); assert.equal(failed.failures.length, 1)
+  const blocked = await prerender([site], config, { ...base, cleanupCache: async () => ({ blocked: true, skipped: ['safety cap'], failures: [] }) })
   assert.ok(blocked.failures.some(failure => failure.type === 'cleanup-blocked'))
 }))
 
@@ -210,7 +214,7 @@ test('password form login carries hidden fields and cookies from sitemap through
     if (!options.headers.Cookie?.includes('storefront=ok')) return new Response('<form method="post" action="/password"><input type="hidden" name="authenticity_token" value="mock-csrf"><input name="password"></form>')
     return new Response(url.endsWith('/sitemap.xml') ? xml([`${site}/one`, `${site}/two`]) : island(buildId, { hit: true }))
   }
-  const report = await prerender([site], config, { dryRun: true, log: quiet, reader: createPageReader({ fetcher, password: 'mock-password' }) })
+  const report = await prerender([site], config, { dryRun: true, cleanup: 'none', log: quiet, reader: createPageReader({ fetcher, password: 'mock-password' }) })
   assert.equal(logins, 1); assert.equal(report.failures.length, 0); assert.equal(report.counts.hit, 2)
   assert.ok(requests.filter(request => /\/(one|two)$/.test(request.url)).every(request => /storefront=ok/.test(request.options.headers.Cookie)))
   assert.doesNotMatch(await readFile(join(config.reportDir, 'report.json'), 'utf8'), /mock-password|mock-csrf|storefront=ok/)
@@ -255,10 +259,10 @@ test('password-env selects the named secret for the built-in page reader', () =>
     return new Response(url.endsWith('/sitemap.xml') ? xml([`${site}/page`]) : island(buildId, { hit: true }))
   }
   try {
-    const report = await prerender([site], config, { dryRun: true, log: quiet, env: { PREVIEW_SECRET: 'custom-password' }, passwordEnv: 'PREVIEW_SECRET' })
+    const report = await prerender([site], config, { dryRun: true, cleanup: 'none', log: quiet, env: { PREVIEW_SECRET: 'custom-password' }, passwordEnv: 'PREVIEW_SECRET' })
     assert.equal(logins, 1); assert.equal(report.counts.hit, 1); assert.equal(report.failures.length, 0)
     process.env.SHOPIFY_STOREFRONT_PASSWORD = 'other-store-password'
-    const missing = await prerender([site], config, { dryRun: true, log: quiet, env: {}, passwordEnv: 'PREVIEW_SECRET' })
+    const missing = await prerender([site], config, { dryRun: true, cleanup: 'none', log: quiet, env: {}, passwordEnv: 'PREVIEW_SECRET' })
     assert.match(missing.failures[0].message, /password required/); assert.equal(logins, 1)
   } finally {
     globalThis.fetch = previous
@@ -315,7 +319,8 @@ test('command help matches README flags and defaults exactly and removed command
     assert.equal((section.match(/^\| `--/gm) ?? []).length, flags.length)
   }
   for (const command of ['init', 'sync', 'doctor', 'prune', 'islands', 'stores', 'health-issue']) assert.throws(() => parseArgs(command, []), /Unknown command/)
-  assert.throws(() => parseArgs('build', ['--cleanup']), /Unknown option/)
+  assert.throws(() => parseArgs('build', ['--no-delete']), /Unknown option/)
+  assert.throws(() => parseArgs('prerender', ['--cleanup']), /Unknown option/)
   assert.throws(() => parseArgs('setup', ['--timeout']), /Missing value/)
 })
 
@@ -344,7 +349,7 @@ test('password stores: the homepage is opened first so sitemap.xml is fetched wi
     if (!loggedIn) return new Response('<form method="post" action="/password"><input type="hidden" name="authenticity_token" value="mock-csrf"><input name="password"></form>')
     return new Response(island(buildId, { hit: true }))
   }
-  const report = await prerender([site], config, { dryRun: true, log: quiet, reader: createPageReader({ fetcher, password: 'mock-password' }) })
+  const report = await prerender([site], config, { dryRun: true, cleanup: 'none', log: quiet, reader: createPageReader({ fetcher, password: 'mock-password' }) })
   assert.equal(report.failures.length, 0)
   assert.equal(report.counts.hit, 1)
   assert.equal(order[0], 'GET /')

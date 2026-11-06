@@ -46,7 +46,8 @@ export interface Report {
 }
 export interface PrerenderOptions {
   dryRun?: boolean
-  cleanup?: boolean
+  /** Cache cleanup after a successful run. Default: 'purge' for sitemap crawls, 'none' for saved HTML. */
+  cleanup?: 'purge' | 'recent' | 'none'
   theme?: string | number
   limit?: number
   concurrency?: number

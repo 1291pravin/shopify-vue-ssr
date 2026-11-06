@@ -32,7 +32,7 @@ async function captureProps(config, captured) {
   }
 }
 
-export async function prerender(inputs, config, { dryRun = false, cleanup = false, theme, limit, concurrency = 2,
+export async function prerender(inputs, config, { dryRun = false, cleanup, theme, limit, concurrency = 2,
   passwordEnv = 'SHOPIFY_STOREFRONT_PASSWORD', env = process.env, reader = createPageReader({ password: env[passwordEnv] ?? '' }), verify = renderAndVerify,
   admin, cleanupCache = prune, log = console.log } = {}) {
   if (!inputs.length) throw new Error('prerender needs a site URL or saved .html files')
@@ -40,6 +40,10 @@ export async function prerender(inputs, config, { dryRun = false, cleanup = fals
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error('--limit must be a positive integer')
   if (theme !== undefined && !/^\d+$/.test(String(theme))) throw new Error('--theme must be a numeric theme id')
   const online = /^https?:\/\//i.test(inputs[0])
+  // Sitemap crawls purge by default so the cache holds only the deployed build. Saved-file
+  // runs stay offline unless cleanup is requested.
+  cleanup ??= online ? 'purge' : 'none'
+  if (!['purge', 'recent', 'none'].includes(cleanup)) throw new Error('cleanup must be "purge", "recent" or "none"')
   if (online && (inputs.length !== 1 || !URL.canParse(inputs[0]) || new URL(inputs[0]).protocol !== 'https:' || new URL(inputs[0]).username || new URL(inputs[0]).password)) throw new Error('Use one HTTPS site URL without credentials, or saved .html files')
   if (!online && inputs.some(input => !/\.html?$/i.test(input))) throw new Error('Saved inputs must be .html files; use one HTTPS site URL for a sitemap crawl')
   const sitemap = online ? new URL('/sitemap.xml', inputs[0]).href : null
@@ -163,16 +167,16 @@ export async function prerender(inputs, config, { dryRun = false, cleanup = fals
   }))
   await captureProps(config, captured)
   await finishReport(report, config)
-  if (cleanup) {
+  if (cleanup !== 'none') {
     if (report.failures.length) report.cleanup = { blocked: true, skipped: ['Prerender failed; cleanup requires a successful run'] }
-    else report.cleanup = await cleanupCache({ ...config, sitemap: sitemap ?? config.sitemap }, { yes: !dryRun, reader, admin, probe: online ? previewUrl(new URL('/', inputs[0]).href, theme) : undefined, expectedBuildId: build.buildId, themeId: theme })
+    else report.cleanup = await cleanupCache({ ...config, sitemap: sitemap ?? config.sitemap }, { yes: !dryRun, reader, admin, probe: online ? previewUrl(new URL('/', inputs[0]).href, theme) : undefined, expectedBuildId: build.buildId, themeId: theme, mode: cleanup })
     for (const failure of report.cleanup.failures ?? []) addFailure(report, { page: '', component: null, key: null }, failure.type, new Error(failure.message))
     if (report.cleanup.blocked) addFailure(report, { page: '', component: null, key: null }, 'cleanup-blocked', new Error(report.cleanup.skipped.join('; ')))
     // Re-render summary, then append the cleanup detail after it.
     await finishReport(report, config)
     if (report.cleanup.counts) {
       const { appendFile } = await import('node:fs/promises')
-      await appendFile(join(config.reportDir, 'summary.md'), `\n## Cache cleanup\n\n${JSON.stringify({ dryRun: report.cleanup.dryRun, counts: report.cleanup.counts, deleted: report.cleanup.deleted, skipped: report.cleanup.skipped })}\n`)
+      await appendFile(join(config.reportDir, 'summary.md'), `\n## Cache cleanup\n\n${JSON.stringify({ dryRun: report.cleanup.dryRun, mode: report.cleanup.mode, counts: report.cleanup.counts, deleted: report.cleanup.deleted, skipped: report.cleanup.skipped })}\n`)
     }
   }
   return report

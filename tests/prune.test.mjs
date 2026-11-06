@@ -241,6 +241,27 @@ test('prune reports dry-run candidates, cap/confirmation guards, actual deletion
   assert.equal(summary.match(/## Cache cleanup/g).length, 1); assert.match(summary, /Deleted: 3 fragments/)
 }))
 
+test('purge mode keeps only the deployed build and its seen keys, ignoring retention settings', async () => temp(async root => {
+  const config = { root, reportDir: join(root, 'reports'), storeId: 'test', store: 'example.myshopify.com', sitemap: crawl.sitemap, prune: { keepBuilds: 5, graceDays: 30, maxDelete: 20 } }
+  await mkdir(config.reportDir)
+  const saved = { ...crawl, storeId: config.storeId, store: config.store }
+  await writeFile(join(config.reportDir, 'latest-full-crawl.json'), JSON.stringify(saved))
+  await writeFile(join(config.reportDir, 'latest-sitemap-run.json'), JSON.stringify(saved))
+  // Recent entries and a recently observed theme would all survive the recent policy.
+  const entries = [fragment('previous', 'b'.repeat(64), '2026-11-01'), fragment('stale', current, '2026-11-01'), fragment('legacy', null, '2026-11-01'), fragment('seen', current, '2026-11-01')]
+  const builds = [{ ...history('b'.repeat(64), '2026-11-02'), fields: [{ key: 'last_seen', value: '2026-11-02' }, { key: 'themes', value: '{"7":"2026-11-02"}' }] }, history(current, '2026-11-03')]
+  const reader = async () => `<meta name="ssr-build-id" content="${current}">`
+  const recent = await prune(config, { admin: inventoryAdmin(entries, builds).admin, reader, now })
+  assert.equal(recent.selected.length, 0)
+  const mock = inventoryAdmin(entries, builds)
+  const purged = await prune(config, { admin: mock.admin, reader, now, yes: true, mode: 'purge' })
+  assert.equal(purged.mode, 'purge'); assert.deepEqual(purged.keptBuilds, [current])
+  assert.deepEqual(purged.counts, { oldBuilds: 1, staleContent: 1, legacy: 1 })
+  assert.deepEqual(purged.deleted, { fragments: 3, builds: 1 })
+  assert.deepEqual([...mock.removed].sort(), ['history-' + 'b'.repeat(64), 'legacy', 'previous', 'stale'])
+  await assert.rejects(prune(config, { admin: mock.admin, reader, now, mode: 'all' }), /Cleanup mode/)
+}))
+
 test('deployment changes during inventory stop deletion; inventory errors persist failure reports', async () => temp(async root => {
   const config = { root, reportDir: root, storeId: 'test', store: 'example.myshopify.com' }
   let probes = 0

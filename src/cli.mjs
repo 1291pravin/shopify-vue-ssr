@@ -26,7 +26,8 @@ export const commands = {
     '--theme': ['ID', 'published theme', 'Add preview_theme_id to page requests for this numeric theme id.'],
     '--password-env': ['NAME', 'SHOPIFY_STOREFRONT_PASSWORD', 'Environment variable containing the storefront password.'],
     '--dry-run': [null, 'false', 'Render, verify and write local reports/props; do not change cache data.'],
-    '--cleanup': [null, 'false', 'Run guarded cache cleanup after a successful crawl; dry-run previews deletions.'],
+    '--no-delete': [null, 'false', 'Skip cache cleanup. By default a successful crawl deletes every cache entry except the deployed build\'s current keys.'],
+    '--keep-recent': [null, 'false', 'Clean up with the prune retention policy (recent builds and observed themes) instead of purging.'],
     '--limit': ['N', 'all pages', 'Positive maximum number of pages; partial crawls cannot authorize stale-content deletion.'],
     '--concurrency': ['N', '2', 'Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits.'],
   } },
@@ -99,7 +100,9 @@ export async function runCli(argv = process.argv.slice(2)) {
         finally { process.removeListener('SIGINT', cancel) }
       } else if (command === 'build') await buildProject(config)
       else if (command === 'prerender') {
-        const result = await prerender(inputs, config, { dryRun: flags.has('--dry-run'), cleanup: flags.has('--cleanup'), theme: flags.get('--theme'), passwordEnv: flags.get('--password-env'), limit: number('--limit'), concurrency: number('--concurrency') })
+        if (flags.has('--no-delete') && flags.has('--keep-recent')) throw new Error('Use either --no-delete or --keep-recent, not both')
+        const cleanup = flags.has('--no-delete') ? 'none' : flags.has('--keep-recent') ? 'recent' : undefined
+        const result = await prerender(inputs, config, { dryRun: flags.has('--dry-run'), cleanup, theme: flags.get('--theme'), passwordEnv: flags.get('--password-env'), limit: number('--limit'), concurrency: number('--concurrency') })
         console.log(JSON.stringify({ storeId: config.storeId, store: config.store, ...result.counts }))
         if (result.failures.length) process.exitCode = 1
       } else if (command === 'check') {

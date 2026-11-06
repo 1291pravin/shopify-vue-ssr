@@ -137,10 +137,15 @@ async function optionalJson(file) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error }
 }
 
-export async function prune(config, { yes = false, admin, reader = createPageReader(), now = Date.now(), probe, expectedBuildId, themeId, ...overrides } = {}) {
-  const settings = pruneOptions({ ...config.prune, ...overrides })
+// purge keeps only the confirmed deployed build and the keys its crawl saw. recent applies
+// the configured retention policy (keepBuilds, graceDays and observed themes).
+export const purgeOptions = { keepBuilds: 1, graceDays: 0 }
+
+export async function prune(config, { yes = false, admin, reader = createPageReader(), now = Date.now(), probe, expectedBuildId, themeId, mode = 'recent', ...overrides } = {}) {
+  if (!['purge', 'recent'].includes(mode)) throw new Error('Cleanup mode must be "purge" or "recent"')
+  const settings = pruneOptions({ ...config.prune, ...overrides, ...(mode === 'purge' ? purgeOptions : {}) })
   const report = { schemaVersion: 1, command: 'prune', time: new Date(now).toISOString(), storeId: config.storeId ?? 'default', store: config.store,
-    dryRun: !yes, options: settings, deployedBuildId: null, selected: [], keptBuilds: [], deletedBuilds: [], counts: { oldBuilds: 0, staleContent: 0, legacy: 0 },
+    dryRun: !yes, mode, options: settings, deployedBuildId: null, selected: [], keptBuilds: [], deletedBuilds: [], counts: { oldBuilds: 0, staleContent: 0, legacy: 0 },
     skipped: [], failures: [], deleted: { fragments: 0, builds: 0 }, before: null, after: null, projectedAfter: null, byteMeasure: 'UTF-8 field values; excludes Shopify storage overhead' }
   let entries, builds
   const deletedFragments = new Set(), deletedBuilds = new Set(), pending = new Set()
@@ -185,7 +190,7 @@ export async function prune(config, { yes = false, admin, reader = createPageRea
   else if (entries && builds) report.after = { fragments: totals(entries.filter(entry => !deletedFragments.has(entry.id))), builds: totals(builds.filter(build => !deletedBuilds.has(build.id))) }
   await mkdir(config.reportDir, { recursive: true })
   await writeFile(join(config.reportDir, 'prune.json'), JSON.stringify(report, null, 2) + '\n')
-  const section = ['## Cache cleanup', '', `Mode: ${report.dryRun ? 'dry run' : 'delete'}; deployed build: ${report.deployedBuildId ?? 'unconfirmed'}.`,
+  const section = ['## Cache cleanup', '', `Mode: ${report.dryRun ? 'dry run' : 'delete'} (${report.mode}); deployed build: ${report.deployedBuildId ?? 'unconfirmed'}.`,
     `Selected: ${report.counts.oldBuilds} old-build, ${report.counts.staleContent} stale-content, ${report.counts.legacy} legacy fragments. Deleted: ${report.deleted.fragments} fragments, ${report.deleted.builds} build records.`,
     `Retained by guard: ${JSON.stringify(report.retained ?? {})}.`,
     `Builds kept: ${report.keptBuilds.join(', ') || 'unknown'}. Builds selected for deletion: ${report.deletedBuilds.join(', ') || 'none'}.`,

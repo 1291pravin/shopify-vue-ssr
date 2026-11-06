@@ -41,6 +41,9 @@ Validate changes through the CLI and installed package as well as direct functio
   storing rendered HTML. Theme ids are history metadata; cache keys use code builds.
 - Capture bounded, deduplicated real props per store for optional offline check.
   Fixtures are optional. Check with no props is a successful first run with a hint.
-- Delete cache data only through prerender --cleanup. Dry-run previews deletion;
-  preserve build confirmation, recent observed themes, full-crawl and size guards.
+- Delete cache data only through prerender cleanup, which runs after a successful
+  crawl. The default purge keeps only the deployed build's seen keys; --no-delete
+  skips it and --keep-recent applies the retention policy. Dry-run previews deletion;
+  preserve build confirmation, full-crawl and size guards, and recent observed themes
+  under --keep-recent.
 - Do not push or create remote resources unless explicitly instructed by the owner.

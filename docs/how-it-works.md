@@ -61,7 +61,10 @@ confirmed build and the most recent keepBuilds minimum. Multiple active themes
 can protect more than that minimum. Crawl active preview themes within the window;
 history cannot know about themes that have never been observed.
 
-Deletion runs only with `prerender --cleanup`. `--dry-run` renders and verifies and
+A successful sitemap prerender purges by default: it keeps only the confirmed
+deployed build, its history record and its seen keys. `--no-delete` skips cleanup
+and `--keep-recent` applies the retention policy described above. Saved-file runs
+skip cleanup unless `--keep-recent` is given. `--dry-run` renders and verifies and
 writes local reports/props, while leaving cache data unchanged. Cleanup inventories
 exact ids, requires fresh storefront build confirmation (repeated before each
 batch), protects seen keys, enforces maxDelete across fragments and history, and
@@ -69,7 +72,7 @@ verifies deletion jobs. A failed run blocks cleanup. Unseen content requires the
 latest attempted sitemap crawl to be complete and clean and older than grace;
 partial and saved-file runs cannot authorize it. Other active themes sharing a
 build block stale-content deletion, and other retained builds' props are protected.
-Legacy entries without build metadata require grace. Defaults keep three builds,
+Legacy entries without build metadata require grace. With `--keep-recent`, defaults keep three builds,
 use 14 days of grace/history and allow at most 20,000 selected objects.
 
 Everything runs locally or in any CI. The package ships no workflow files or issue

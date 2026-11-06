@@ -213,7 +213,7 @@ Preserve the resulting exact JSON bytes for cache keys and hydration.
 | `store` | unset | Single `.myshopify.com` domain, store id `default`; `SHOPIFY_STORE` overrides it. |
 | `sitemap` | unset | Optional HTTPS sitemap used as the cleanup probe origin with saved HTML. URL prerender always reads the supplied site's `/sitemap.xml`. |
 | `stores` | unset | Map of ids to `{ domain, sitemap?, credentials? }`; use instead of `store`/`sitemap`. `credentials` is an environment suffix for a separate organization. |
-| `prune` | `{ keepBuilds: 3, graceDays: 14, maxDelete: 20000 }` | Cleanup policy, used only with `prerender --cleanup`. Integers: keepBuilds >= 1; others >= 0. |
+| `prune` | `{ keepBuilds: 3, graceDays: 14, maxDelete: 20000 }` | Cleanup policy. keepBuilds and graceDays apply only with `prerender --keep-recent`; maxDelete always applies. Integers: keepBuilds >= 1; others >= 0. |
 | `outDir` | `dist-ssr` | Server/verification bundles, maps and `build.json`. |
 | `reportDir` | `ssr-report` | Base directory; reports and captured props live in a subdirectory per store id. |
 | `fixturesDir` | `ssr-fixtures` | Optional props JSON under `<Component>/*.json`. |
@@ -362,7 +362,8 @@ npx shopify-vue-ssr prerender https://example.com --limit 10 --dry-run
 | `--theme <ID>` | published theme | Add preview_theme_id to page requests for this numeric theme id. |
 | `--password-env <NAME>` | SHOPIFY_STOREFRONT_PASSWORD | Environment variable containing the storefront password. |
 | `--dry-run` | false | Render, verify and write local reports/props; do not change cache data. |
-| `--cleanup` | false | Run guarded cache cleanup after a successful crawl; dry-run previews deletions. |
+| `--no-delete` | false | Skip cache cleanup. By default a successful crawl deletes every cache entry except the deployed build's current keys. |
+| `--keep-recent` | false | Clean up with the prune retention policy (recent builds and observed themes) instead of purging. |
 | `--limit <N>` | all pages | Positive maximum number of pages; partial crawls cannot authorize stale-content deletion. |
 | `--concurrency <N>` | 2 | Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits. |
 | `--root <DIR>` | . | Project directory. |
@@ -476,8 +477,9 @@ npx shopify-vue-ssr prerender captures/home.html captures/product.html --dry-run
 ```
 
 Saved HTML also requires matching build/key markers. It supplies props; the local
-renderer supplies the stored HTML. A saved-file run cannot authorize stale-content
-cleanup; other cleanup rules still require fresh storefront build confirmation.
+renderer supplies the stored HTML. Saved-file runs skip cleanup unless `--keep-recent`
+is supplied; they cannot authorize stale-content cleanup, and other cleanup rules
+still require fresh storefront build confirmation.
 
 ## Running in CI
 
@@ -513,14 +515,26 @@ ssr_cache:
 
 ## Cache cleanup
 
-Nothing is deleted unless `--cleanup` is supplied. Preview candidates first:
+A successful sitemap crawl purges the cache by default, so the store keeps only
+what the live theme uses: fragments of the confirmed deployed build that this crawl
+saw or filled, and that build's history record. Fragments and history for every
+other build and legacy fragments without build metadata are deleted. Unseen
+fragments of the deployed build are deleted only after a complete, clean sitemap
+crawl; partial `--limit` runs keep them. Cleanup runs after the crawl, never before,
+so the live cache is never empty while pages are refilled.
 
 ```sh
-npx shopify-vue-ssr prerender https://example.com --cleanup --dry-run
-npx shopify-vue-ssr prerender https://example.com --cleanup
+npx shopify-vue-ssr prerender https://example.com --dry-run      # preview the purge
+npx shopify-vue-ssr prerender https://example.com                # crawl, fill, purge
+npx shopify-vue-ssr prerender https://example.com --no-delete    # crawl and fill only
+npx shopify-vue-ssr prerender https://example.com --keep-recent  # retention policy
 ```
 
-`prune.keepBuilds` retains the confirmed fetched build plus the most recently seen
+Purging means an unpublished or preview theme on another build, or a rollback to
+an earlier build, starts with an empty cache until it is crawled again. Use
+`--keep-recent` (or `--no-delete`) when several builds must stay warm.
+
+With `--keep-recent`, `prune.keepBuilds` retains the confirmed fetched build plus the most recently seen
 builds up to its minimum (default 3). It additionally protects each theme's latest
 observed build within `graceDays` (default 14 days), even if this exceeds keepBuilds.
 Prerender refreshes history on hits as well as fills. Only themes observed by
@@ -640,8 +654,8 @@ Repair checklist:
    and first DOM difference. Fix transport/deployment problems at their source.
 4. Build and run check against saved props plus optional synthetic fixtures. Never
    bypass verification or store captured browser HTML.
-5. Deploy the matching build and prerender again. Review cleanup candidates with
-   dry-run before requesting deletion. Report local checks separately from live proof.
+5. Deploy the matching build and prerender again. Preview cleanup candidates with
+   `--dry-run` before the deleting run. Report local checks separately from live proof.
 
 The original three-island example includes optional synthetic fixtures. To validate
 this repository: root `npm ci`, `npm test`; in `example/`, `npm ci`, `npm run build`,

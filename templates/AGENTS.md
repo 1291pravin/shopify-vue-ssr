@@ -50,8 +50,9 @@ Repair checklist:
    store captured browser HTML. Hash exact transported JSON, including whitespace,
    ordering and literal-less-than escapes (\u003c).
 
-Nothing is deleted without `prerender --cleanup`. First inspect a run with
-`--cleanup --dry-run` and read prune.json. Cleanup protects recent observed themes
-and retained builds, requires fresh build confirmation and a clean full crawl for
-stale-content removal, and enforces a deletion ceiling. Crawl every active theme
+A successful sitemap prerender purges cache entries for every build except the
+deployed one; use `--no-delete` to skip cleanup or `--keep-recent` to keep recent
+observed themes and builds. First inspect a run with `--dry-run` and read
+prune.json. Cleanup requires fresh build confirmation and a clean full crawl for
+stale-content removal, and enforces a deletion ceiling. With --keep-recent, crawl every active theme
 within the configured grace window. Report local proof separately from live proof.
