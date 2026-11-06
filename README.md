@@ -362,7 +362,7 @@ npx shopify-vue-ssr prerender https://example.com --limit 10 --dry-run
 | `--theme <ID>` | published theme | Add preview_theme_id to page requests for this numeric theme id. |
 | `--password-env <NAME>` | SHOPIFY_STOREFRONT_PASSWORD | Environment variable containing the storefront password. |
 | `--dry-run` | false | Render, verify and write local reports/props; do not change cache data. |
-| `--no-delete` | false | Skip cache cleanup. By default a successful crawl deletes every cache entry except the deployed build's current keys. |
+| `--no-delete` | false | Skip cache cleanup. By default a live-theme crawl deletes other builds' cache entries first, and a successful crawl then deletes every entry except the deployed build's current keys. |
 | `--keep-recent` | false | Clean up with the prune retention policy (recent builds and observed themes) instead of purging. |
 | `--limit <N>` | all pages | Positive maximum number of pages; partial crawls cannot authorize stale-content deletion. |
 | `--concurrency <N>` | 2 | Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits. |
@@ -515,13 +515,20 @@ ssr_cache:
 
 ## Cache cleanup
 
-A successful sitemap crawl purges the cache by default, so the store keeps only
-what the live theme uses: fragments of the confirmed deployed build that this crawl
-saw or filled, and that build's history record. Fragments and history for every
-other build and legacy fragments without build metadata are deleted. Unseen
-fragments of the deployed build are deleted only after a complete, clean sitemap
-crawl; partial `--limit` runs keep them. Cleanup runs after the crawl, never before,
-so the live cache is never empty while pages are refilled.
+A sitemap crawl purges the cache by default, so the store keeps only what the live
+theme uses: fragments of the confirmed deployed build that this crawl saw or filled,
+and that build's history record. The purge runs in two steps:
+
+1. Before the crawl, once the storefront confirms it serves the local build,
+   fragments and history for every other build are deleted. Their keys can never be
+   served by the deployed build, so this step does not wait for the crawl and still
+   applies when the crawl later fails. It runs only for the live theme: `--theme`
+   runs skip it, because a preview theme's build is not the one the live theme serves.
+2. After a successful crawl, legacy fragments without build metadata and unseen
+   fragments of the deployed build are deleted. Unseen fragments require a complete,
+   clean sitemap crawl; partial `--limit` runs keep them. A failed crawl keeps them,
+   so fragments the live theme still serves are never removed on the evidence of an
+   incomplete crawl, and the live cache is never emptied while pages are refilled.
 
 ```sh
 npx shopify-vue-ssr prerender https://example.com --dry-run      # preview the purge
@@ -546,7 +553,8 @@ grace. Other active themes sharing that build conservatively block stale-content
 cleanup. Other retained builds' props are protected. Legacy fragments without build
 metadata require grace. Seen keys stay protected, including after a failed run.
 
-Failures block cleanup for the run. Partial/saved-file runs block stale-content
+Failures block the after-crawl step for the run; the before-crawl old-build step
+is already done. With `--keep-recent` or `--theme`, failures block all cleanup. Partial/saved-file runs block stale-content
 cleanup. Fresh build confirmation is repeated before each deletion batch; a changed
 build stops deletion. `maxDelete` (default 20000) includes fragments and build history
 and blocks the entire deletion if exceeded. Exact-id batches contain at most 250

@@ -42,11 +42,14 @@ export interface Report {
   counts: Record<string, number>
   hint?: string
   warnings?: string[]
+  /** Old-build cleanup that a live-theme purge runs before the crawl. */
+  precleanup?: unknown
   cleanup?: unknown
 }
 export interface PrerenderOptions {
   dryRun?: boolean
-  /** Cache cleanup after a successful run. Default: 'purge' for sitemap crawls, 'none' for saved HTML. */
+  /** Cache cleanup. Default: 'purge' for sitemap crawls, 'none' for saved HTML. A purge without
+   * `theme` deletes old builds before the crawl and the deployed build's unseen keys after a successful run. */
   cleanup?: 'purge' | 'recent' | 'none'
   theme?: string | number
   limit?: number

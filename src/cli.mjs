@@ -26,7 +26,7 @@ export const commands = {
     '--theme': ['ID', 'published theme', 'Add preview_theme_id to page requests for this numeric theme id.'],
     '--password-env': ['NAME', 'SHOPIFY_STOREFRONT_PASSWORD', 'Environment variable containing the storefront password.'],
     '--dry-run': [null, 'false', 'Render, verify and write local reports/props; do not change cache data.'],
-    '--no-delete': [null, 'false', 'Skip cache cleanup. By default a successful crawl deletes every cache entry except the deployed build\'s current keys.'],
+    '--no-delete': [null, 'false', 'Skip cache cleanup. By default a live-theme crawl deletes other builds\' cache entries first, and a successful crawl then deletes every entry except the deployed build\'s current keys.'],
     '--keep-recent': [null, 'false', 'Clean up with the prune retention policy (recent builds and observed themes) instead of purging.'],
     '--limit': ['N', 'all pages', 'Positive maximum number of pages; partial crawls cannot authorize stale-content deletion.'],
     '--concurrency': ['N', '2', 'Pages fetched at once. Failed requests with HTTP 429 are retried with backoff; use 1 if Shopify still rate-limits.'],

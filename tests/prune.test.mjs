@@ -89,6 +89,18 @@ test('failed or incomplete latest full run blocks stale content but allows indep
   assert.equal(select([fragment('stale', current)], [], { crawl: { ...crawl, buildId: 'other' } }).selected.length, 0)
 })
 
+test('old-builds scope selects only other builds and ignores crawl state, legacy and stale content', () => {
+  const entries = [fragment('stale', current), fragment('old', 'old'), fragment('legacy', null), fragment('seen', current)]
+  for (const options of [{}, { crawl: null }, { latestRun: { ...crawl, runId: 'failed', failures: [{}] } }]) {
+    const result = select(entries, [history('old', '2026-01-01')], { keepBuilds: 1, scope: 'old-builds', ...options })
+    assert.deepEqual(result.selected.map(entry => entry.id), ['old'])
+    assert.deepEqual(result.deletedBuilds, ['old']); assert.deepEqual(result.skipped, [])
+    assert.equal(result.retained.afterCrawl + result.retained.seen, 3)
+  }
+  assert.equal(select(entries, [], { keepBuilds: 1, scope: 'old-builds', deployedBuildId: null }).selected.length, 0)
+  assert.throws(() => select(entries, [], { scope: 'everything' }), /Cleanup scope/)
+})
+
 test('maxDelete cap includes build history records and permits exactly the cap', () => {
   const rows = [fragment('old', 'old')], builds = [history('old', '2020-01-01')]
   assert.equal(select(rows, builds, { keepBuilds: 1, maxDelete: 1 }).blocked, true)
@@ -260,6 +272,11 @@ test('purge mode keeps only the deployed build and its seen keys, ignoring reten
   assert.deepEqual(purged.deleted, { fragments: 3, builds: 1 })
   assert.deepEqual([...mock.removed].sort(), ['history-' + 'b'.repeat(64), 'legacy', 'previous', 'stale'])
   await assert.rejects(prune(config, { admin: mock.admin, reader, now, mode: 'all' }), /Cleanup mode/)
+  const scoped = inventoryAdmin(entries, builds)
+  const old = await prune(config, { admin: scoped.admin, reader, now, yes: true, mode: 'purge', scope: 'old-builds' })
+  assert.equal(old.scope, 'old-builds'); assert.deepEqual(old.deleted, { fragments: 1, builds: 1 })
+  assert.deepEqual([...scoped.removed].sort(), ['history-' + 'b'.repeat(64), 'previous'])
+  assert.match(await readFile(join(config.reportDir, 'summary.md'), 'utf8'), /old builds only/)
 }))
 
 test('deployment changes during inventory stop deletion; inventory errors persist failure reports', async () => temp(async root => {

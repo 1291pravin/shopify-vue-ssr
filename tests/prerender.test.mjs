@@ -189,15 +189,38 @@ test('sitemap runs purge by default, no-delete and saved files skip it, dry-run 
   await prerender([site], config, { ...base, cleanup: 'none' }); assert.equal(calls.length, 0)
   await writeFile(join(config.root, 'saved.html'), island(buildId, { hit: true }))
   await prerender(['saved.html'], config, base); assert.equal(calls.length, 0)
-  await prerender([site], config, { ...base, dryRun: true }); assert.equal(calls.length, 1); assert.equal(calls[0].yes, false); assert.equal(calls[0].mode, 'purge')
-  await prerender([site], config, { ...base, theme: '42' }); assert.equal(calls.length, 2); assert.equal(calls[1].yes, true); assert.equal(calls[1].mode, 'purge')
-  assert.equal(calls[1].expectedBuildId, buildId); assert.match(calls[1].probe, /preview_theme_id=42/)
-  await prerender([site], config, { ...base, cleanup: 'recent' }); assert.equal(calls[2].mode, 'recent')
+  // Live-theme purge: old builds before the crawl, then the full purge after it.
+  await prerender([site], config, { ...base, dryRun: true }); assert.equal(calls.length, 2)
+  assert.deepEqual(calls.map(call => [call.scope, call.yes, call.mode]), [['old-builds', false, 'purge'], [undefined, false, 'purge']])
+  calls.length = 0
+  await prerender([site], config, { ...base, theme: '42' }); assert.equal(calls.length, 1); assert.equal(calls[0].yes, true); assert.equal(calls[0].mode, 'purge')
+  assert.equal(calls[0].scope, undefined); assert.equal(calls[0].expectedBuildId, buildId); assert.match(calls[0].probe, /preview_theme_id=42/)
+  calls.length = 0
+  await prerender([site], config, { ...base, cleanup: 'recent' }); assert.equal(calls.length, 1); assert.equal(calls[0].mode, 'recent')
   await assert.rejects(prerender([site], config, { ...base, cleanup: true }), /cleanup must be/)
+  calls.length = 0
   const failed = await prerender([site], config, { ...base, reader: async () => { throw new Error('offline') } })
-  assert.equal(calls.length, 3); assert.equal(failed.failures.length, 1)
+  assert.equal(calls.length, 0); assert.equal(failed.failures.length, 1)
   const blocked = await prerender([site], config, { ...base, cleanupCache: async () => ({ blocked: true, skipped: ['safety cap'], failures: [] }) })
   assert.ok(blocked.failures.some(failure => failure.type === 'cleanup-blocked'))
+}))
+
+test('a failed live-theme crawl still removes old builds first but keeps the deployed build cache', () => temp(async (config, buildId) => {
+  const calls = [], reader = async url => url.endsWith('/sitemap.xml') ? xml([`${site}/page`]) : island(buildId)
+  const cleanupCache = async (_config, options) => { calls.push(options); return { blocked: false, failures: [], counts: { oldBuilds: 2, staleContent: 0, legacy: 0 }, deleted: { fragments: 2, builds: 1 }, skipped: [] } }
+  const report = await prerender([site], config, { log: quiet, reader, admin: mockAdmin().admin, cleanupCache, verify: async () => ({ ok: false, type: 'render-error', error: new Error('boom') }) })
+  assert.deepEqual(calls.map(call => call.scope), ['old-builds'])
+  assert.equal(report.precleanup.deleted.fragments, 2)
+  assert.equal(report.cleanup.blocked, true); assert.match(report.cleanup.skipped[0], /old builds were cleaned before the crawl/)
+  const summary = await readFile(join(config.reportDir, 'summary.md'), 'utf8')
+  assert.match(summary, /Before crawl \(old builds only\)/)
+  // A failing pre-crawl inventory is reported without counting against the crawl.
+  calls.length = 0
+  const inventory = await prerender([site], config, { log: quiet, reader, admin: mockAdmin().admin, verify: good,
+    cleanupCache: async (_config, options) => { calls.push(options); return options.scope ? { blocked: false, failures: [{ type: 'prune-error', message: 'inventory down' }] } : { blocked: false, failures: [] } } })
+  assert.ok(inventory.failures.some(failure => failure.type === 'prune-error'))
+  assert.equal(calls.length, 2)
+  assert.equal(JSON.parse(await readFile(join(config.reportDir, 'latest-full-crawl.json'), 'utf8')).runId, inventory.runId)
 }))
 
 test('password form login carries hidden fields and cookies from sitemap through concurrent page reads', () => temp(async (config, buildId) => {

@@ -69,6 +69,17 @@ export async function prerender(inputs, config, { dryRun = false, cleanup, theme
       report.fullCrawl = !limit || pages.length <= limit
     } catch (error) { addFailure(report, { page: sitemap, component: null, key: null }, 'fetch-error', error); return finishReport(report, config) }
   }
+  const cleanupConfig = { ...config, sitemap: sitemap ?? config.sitemap }
+  const cleanupOptions = () => ({ yes: !dryRun, reader, admin, probe: online ? previewUrl(new URL('/', inputs[0]).href, theme) : undefined, expectedBuildId: build.buildId, themeId: theme, mode: cleanup })
+  // Old builds' fragments can never be served once the storefront confirms this build, so a
+  // live-theme purge removes them before crawling. The deployed build's unseen fragments stay
+  // until a successful crawl proves which keys are in use. --theme runs skip this step because
+  // a preview theme's build is not the build the live theme serves.
+  if (sitemap && cleanup === 'purge' && !theme) {
+    report.precleanup = await cleanupCache(cleanupConfig, { ...cleanupOptions(), scope: 'old-builds' })
+    const deleted = report.precleanup.deleted
+    if (deleted) log(`Old builds ${dryRun ? 'selected' : 'deleted'} before crawl: ${dryRun ? report.precleanup.selected?.length ?? 0 : deleted.fragments} fragments${dryRun ? '' : `, ${deleted.builds} build records`}`)
+  }
   if (limit) pages = pages.slice(0, limit)
   const captured = new Map(), tasks = new Map(), history = new Set()
   let historyQueue = Promise.resolve()
@@ -168,15 +179,20 @@ export async function prerender(inputs, config, { dryRun = false, cleanup, theme
   await captureProps(config, captured)
   await finishReport(report, config)
   if (cleanup !== 'none') {
-    if (report.failures.length) report.cleanup = { blocked: true, skipped: ['Prerender failed; cleanup requires a successful run'] }
-    else report.cleanup = await cleanupCache({ ...config, sitemap: sitemap ?? config.sitemap }, { yes: !dryRun, reader, admin, probe: online ? previewUrl(new URL('/', inputs[0]).href, theme) : undefined, expectedBuildId: build.buildId, themeId: theme, mode: cleanup })
-    for (const failure of report.cleanup.failures ?? []) addFailure(report, { page: '', component: null, key: null }, failure.type, new Error(failure.message))
+    if (report.failures.length) report.cleanup = { blocked: true, skipped: [report.precleanup
+      ? 'Prerender failed; old builds were cleaned before the crawl, deployed-build cleanup requires a successful run'
+      : 'Prerender failed; cleanup requires a successful run'] }
+    else report.cleanup = await cleanupCache(cleanupConfig, cleanupOptions())
+    // Cleanup failures are reported after the crawl evidence is saved, so they never count against the crawl.
+    for (const failure of [...(report.precleanup?.failures ?? []), ...(report.cleanup.failures ?? [])]) addFailure(report, { page: '', component: null, key: null }, failure.type, new Error(failure.message))
     if (report.cleanup.blocked) addFailure(report, { page: '', component: null, key: null }, 'cleanup-blocked', new Error(report.cleanup.skipped.join('; ')))
     // Re-render summary, then append the cleanup detail after it.
     await finishReport(report, config)
-    if (report.cleanup.counts) {
+    const detail = value => JSON.stringify({ dryRun: value.dryRun, mode: value.mode, counts: value.counts, deleted: value.deleted, skipped: value.skipped })
+    const sections = [report.precleanup?.counts && `Before crawl (old builds only): ${detail(report.precleanup)}`, report.cleanup.counts && `After crawl: ${detail(report.cleanup)}`].filter(Boolean)
+    if (sections.length) {
       const { appendFile } = await import('node:fs/promises')
-      await appendFile(join(config.reportDir, 'summary.md'), `\n## Cache cleanup\n\n${JSON.stringify({ dryRun: report.cleanup.dryRun, mode: report.cleanup.mode, counts: report.cleanup.counts, deleted: report.cleanup.deleted, skipped: report.cleanup.skipped })}\n`)
+      await appendFile(join(config.reportDir, 'summary.md'), `\n## Cache cleanup\n\n${sections.join('\n\n')}\n`)
     }
   }
   return report

@@ -61,14 +61,17 @@ confirmed build and the most recent keepBuilds minimum. Multiple active themes
 can protect more than that minimum. Crawl active preview themes within the window;
 history cannot know about themes that have never been observed.
 
-A successful sitemap prerender purges by default: it keeps only the confirmed
-deployed build, its history record and its seen keys. `--no-delete` skips cleanup
+A sitemap prerender purges by default: it keeps only the confirmed deployed
+build, its history record and its seen keys. On the live theme (no `--theme`),
+other builds' fragments and history are deleted before the crawl once the
+storefront confirms the local build; legacy and unseen deployed-build fragments
+are deleted after a successful crawl. `--no-delete` skips cleanup
 and `--keep-recent` applies the retention policy described above. Saved-file runs
 skip cleanup unless `--keep-recent` is given. `--dry-run` renders and verifies and
 writes local reports/props, while leaving cache data unchanged. Cleanup inventories
 exact ids, requires fresh storefront build confirmation (repeated before each
 batch), protects seen keys, enforces maxDelete across fragments and history, and
-verifies deletion jobs. A failed run blocks cleanup. Unseen content requires the
+verifies deletion jobs. A failed run blocks the after-crawl step. Unseen content requires the
 latest attempted sitemap crawl to be complete and clean and older than grace;
 partial and saved-file runs cannot authorize it. Other active themes sharing a
 build block stale-content deletion, and other retained builds' props are protected.
