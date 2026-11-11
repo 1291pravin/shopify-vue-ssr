@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-rendered Vue for Shopify themes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:wght@400;600&display=swap">
+<style>
+html{background:#0B1320}
+body{margin:0;padding:24px 16px 64px;font-family:Inter,Arial,sans-serif;color:#B9C4D6}
+.slide{width:100%;max-width:1280px;aspect-ratio:16/9;margin:0 auto;position:relative;overflow:hidden;border-radius:12px}
+.slide>section{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;transform-origin:0 0;transform:scale(var(--k,1))}
+section,section *{box-sizing:border-box;margin:0}
+section h1,section h2,section h3{font-weight:600}
+section ul,section ol{padding-left:1.2em}
+section table{border-collapse:collapse;width:100%}
+section th,section td{padding:.35em .6em;border-bottom:1px solid #DDD8CC;vertical-align:top}
+x-shape{display:block}
+x-shape[kind=diamond]{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+svg.wires{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+.notes{max-width:1280px;margin:16px auto 48px;font-size:16px;line-height:1.6}
+.notes b{color:#F6F4EF}
+</style>
+</head>
+<body>
+<div class="slide"><section id="cover" data-transition="fade" style="background:linear-gradient(135deg, #101A2B 0%, #18294A 100%);color:#F6F4EF;font-family:'Inter', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column">
+<div style="width:880px;display:flex;flex-direction:column;gap:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#F2994A">The problem</p>
+<h1 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:96px;font-weight:600;line-height:1.1;color:#F6F4EF">Pages arrive empty until JavaScript runs</h1>
+<p style="font-size:32px;line-height:1.45;color:#B9C4D6">Every section of the storefront is a Vue component rendered in the browser. Visitors on a mid-range phone wait about <b><span style="color:#F2994A">5.5 seconds</span></b> for any content. AI assistants such as ChatGPT, Claude and Perplexity do not run JavaScript, so they read <b><span style="color:#F2994A">almost nothing</span></b>.</p>
+</div>
+<iframe title="Loading order illustration" sandbox="" style="position:absolute;left:1088px;top:128px;width:704px;height:760px;border:0" srcdoc="&lt;!doctype html&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;style&gt;
+*{box-sizing:border-box;margin:0}
+body{font-family:-apple-system,BlinkMacSystemFont,&quot;Segoe UI&quot;,Roboto,Arial,sans-serif;color:#F6F4EF;background:transparent;overflow:hidden}
+.w{display:flex;gap:32px}
+.c{width:336px}
+.t{font-size:26px;font-weight:700;margin-bottom:16px}
+.ph{height:500px;border-radius:28px;background:#F6F4EF;padding:20px;position:relative;overflow:hidden;border:2px solid #2C3B55}
+.b{border-radius:10px;background:#D9DEE8;margin-bottom:14px}
+.nav{height:34px;background:#101A2B}
+.hero{height:170px;background:linear-gradient(135deg,#F2994A,#F7C58C)}
+.row{display:flex;gap:14px}
+.tile{flex:1;height:120px;background:#7FA6F0}
+.ln{height:16px}
+.s{width:60%}
+.k{animation:late 7s infinite}
+@keyframes late{0%,58%{opacity:0}66%,100%{opacity:1}}
+.sp{position:absolute;left:50%;top:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border:6px solid #D9DEE8;border-top-color:#1F5FD1;border-radius:50%;animation:spin .9s linear infinite,gone 7s infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes gone{0%,56%{opacity:1}60%,100%{opacity:0}}
+.q{position:absolute;left:0;right:0;top:50%;margin-top:-34px;text-align:center;font-size:24px;line-height:34px;color:#8E9BB3}
+.st{position:relative;height:48px;margin-top:16px}
+.st span{position:absolute;left:0;top:0;font-size:24px;line-height:48px;padding:0 20px;border-radius:24px;white-space:nowrap;font-weight:600}
+.wait{background:#2C3B55;color:#B9C4D6;animation:gone 7s infinite}
+.ok{background:#7FA6F0;color:#101A2B;animation:late 7s infinite}
+.no{background:#F2994A;color:#101A2B}
+.bar{margin-top:28px;height:10px;border-radius:5px;background:#2C3B55;overflow:hidden}
+.bar div{height:100%;background:#F2994A;border-radius:5px;animation:fill 7s infinite linear}
+@keyframes fill{0%{width:0}62%,100%{width:100%}}
+.lb{display:flex;justify-content:space-between;font-size:24px;color:#B9C4D6;margin-top:12px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}.wait,.sp{opacity:0}}
+&lt;/style&gt;
+&lt;div class=&quot;w&quot;&gt;
+&lt;div class=&quot;c&quot;&gt;&lt;div class=&quot;t&quot;&gt;A visitor&lt;/div&gt;
+&lt;div class=&quot;ph&quot;&gt;&lt;div class=&quot;sp&quot;&gt;&lt;/div&gt;&lt;div class=&quot;k&quot;&gt;&lt;div class=&quot;b nav&quot;&gt;&lt;/div&gt;&lt;div class=&quot;b hero&quot;&gt;&lt;/div&gt;&lt;div class=&quot;row&quot;&gt;&lt;div class=&quot;b tile&quot;&gt;&lt;/div&gt;&lt;div class=&quot;b tile&quot;&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;b ln&quot;&gt;&lt;/div&gt;&lt;div class=&quot;b ln s&quot;&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;div class=&quot;st&quot;&gt;&lt;span class=&quot;wait&quot;&gt;Waiting for JavaScript&lt;/span&gt;&lt;span class=&quot;ok&quot;&gt;Content appears&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;div class=&quot;c&quot;&gt;&lt;div class=&quot;t&quot;&gt;An AI crawler&lt;/div&gt;
+&lt;div class=&quot;ph&quot;&gt;&lt;div class=&quot;q&quot;&gt;No JavaScript,&lt;br&gt;no content&lt;/div&gt;&lt;/div&gt;
+&lt;div class=&quot;st&quot;&gt;&lt;span class=&quot;no&quot;&gt;Stays empty&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;
+&lt;div class=&quot;bar&quot;&gt;&lt;div&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;div class=&quot;lb&quot;&gt;&lt;span&gt;Page arrives&lt;/span&gt;&lt;span&gt;JavaScript ready&lt;/span&gt;&lt;/div&gt;"></iframe>
+<p style="position:absolute;left:128px;bottom:64px;width:880px;font-size:24px;color:#8E9BB3">Live site, 11 Nov 2026. Lab test: phone emulation, slow 4G, median of 3 runs.</p>
+<p style="position:absolute;left:1088px;bottom:64px;width:704px;font-size:24px;color:#8E9BB3">Illustration of the loading order, not measured timings.</p>
+</section></div>
+<p class="notes"><b>Speaker notes.</b> The problem in one sentence: the storefront is built from Vue sections, and every one of them is empty in the HTML that Shopify sends. Content appears only after the JavaScript bundle has downloaded and run. That hurts two audiences. Visitors: in a lab test of the live site, emulating a mid-range phone on slow 4G, first content appeared after about 5.5 seconds on the home page, a product page and a collection page alike. Nothing is painted before Vue has rendered. AI assistants: the crawlers behind ChatGPT, Claude and Perplexity read the raw HTML and, as far as is publicly documented, do not run JavaScript. On our home and product pages the raw HTML holds 59 characters of visible text, no headings, two links and no images. Product pages do carry structured product data, and Google does run JavaScript, so Google search is not affected in the same way. The animation is an illustration of the order of events, not a recording.</p>
+<div class="slide"><section id="flow" data-transition="fade" style="background:#F6F4EF;color:#101A2B;font-family:'Inter', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:24px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1;color:#101A2B">The solution: render Vue ahead of time</h2>
+<p style="position:absolute;left:128px;top:284px;width:1664px;font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#1F5FD1">A · On every deploy and nightly, in GitHub Actions</p>
+<div style="position:absolute;left:128px;top:340px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#EEF2FB;border:2px solid #1F5FD1;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Code merged</p></div>
+<div style="position:absolute;left:474px;top:340px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#EEF2FB;border:2px solid #1F5FD1;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Build and deploy theme</p></div>
+<div style="position:absolute;left:820px;top:340px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#EEF2FB;border:2px solid #1F5FD1;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Pre-render each section</p></div>
+<div style="position:absolute;left:1166px;top:340px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#EEF2FB;border:2px solid #1F5FD1;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Test hydration, mobile and desktop</p></div>
+<div style="position:absolute;left:1512px;top:340px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#1F5FD1;border:2px solid #1F5FD1;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center;color:#FFFDFA">Save verified HTML in Shopify</p></div>
+<p style="position:absolute;left:128px;top:504px;width:1664px;font-size:24px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#9A4A08">B · On every page view, in Shopify and the browser</p>
+<div style="position:absolute;left:128px;top:580px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#101A2B;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center;color:#F6F4EF">Visitor opens a page</p></div>
+<div style="position:absolute;left:474px;top:580px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#101A2B;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center;color:#F6F4EF">Shopify builds the page</p></div>
+<x-shape kind="diamond" style="position:absolute;left:820px;top:560px;width:280px;height:150px;background:#F2994A"></x-shape>
+<p style="position:absolute;left:860px;top:618px;width:200px;font-size:24px;font-weight:600;line-height:1.4;text-align:center;color:#101A2B">Stored HTML?</p>
+<div style="position:absolute;left:1166px;top:580px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#101A2B;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center;color:#F6F4EF">Content visible at once</p></div>
+<div style="position:absolute;left:1512px;top:580px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#101A2B;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center;color:#F6F4EF">Vue hydrates, page is interactive</p></div>
+<div style="position:absolute;left:820px;top:790px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#FFFDFA;border:2px dashed #F2994A;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Section arrives empty</p></div>
+<div style="position:absolute;left:1166px;top:790px;width:280px;height:110px;display:flex;align-items:center;justify-content:center;background:#FFFDFA;border:2px dashed #F2994A;border-radius:16px;padding:16px"><p style="font-size:24px;line-height:1.4;text-align:center">Vue renders it in the browser</p></div>
+<x-connector x1="408" y1="395" x2="474" y2="395" style="color:#1F5FD1;border-width:4px"></x-connector>
+<x-connector x1="754" y1="395" x2="820" y2="395" style="color:#1F5FD1;border-width:4px"></x-connector>
+<x-connector x1="1100" y1="395" x2="1166" y2="395" style="color:#1F5FD1;border-width:4px"></x-connector>
+<x-connector x1="1446" y1="395" x2="1512" y2="395" style="color:#1F5FD1;border-width:4px"></x-connector>
+<x-connector x1="408" y1="635" x2="474" y2="635" style="color:#101A2B;border-width:4px"></x-connector>
+<x-connector x1="754" y1="635" x2="820" y2="635" style="color:#101A2B;border-width:4px"></x-connector>
+<x-connector x1="1100" y1="635" x2="1166" y2="635" style="color:#101A2B;border-width:4px"></x-connector>
+<x-connector x1="1446" y1="635" x2="1512" y2="635" style="color:#101A2B;border-width:4px"></x-connector>
+<x-connector x1="960" y1="710" x2="960" y2="790" style="color:#F2994A;border-width:4px;border-style:dashed"></x-connector>
+<x-connector x1="1100" y1="845" x2="1166" y2="845" style="color:#F2994A;border-width:4px;border-style:dashed"></x-connector>
+<x-connector x1="1446" y1="845" x2="1652" y2="690" route="hv" style="color:#F2994A;border-width:4px;border-style:dashed"></x-connector>
+<p style="position:absolute;left:1100px;top:590px;width:66px;font-size:24px;font-weight:600;line-height:1.4;text-align:center;color:#101A2B">Yes</p>
+<p style="position:absolute;left:976px;top:733px;width:60px;font-size:24px;font-weight:600;line-height:1.4;color:#9A4A08">No</p>
+<p style="position:absolute;left:128px;top:912px;width:660px;font-size:24px;line-height:1.4;color:#44506A">Dashed path: today’s behaviour, kept as the fallback.</p>
+</section></div>
+<p class="notes"><b>Speaker notes.</b> The idea: Shopify cannot run Vue on its servers, so we render the Vue sections ourselves, in advance, and Shopify inserts the result. For anyone who knows Vue, this is the same server render and hydration that Nuxt does, run in the pipeline instead of on a server per request. There is no proxy and no rendering server; the visitor only ever talks to Shopify. Two flows. Flow A runs in GitHub Actions on every deploy and once a night. Code is merged; the theme is built and deployed to Shopify as it is today; then each Vue section is rendered to HTML with the real data from our pages; the HTML is tested to make sure Vue hydrates it cleanly at mobile and desktop widths; and only HTML that passes is saved in Shopify. Flow B runs for every page view. The visitor opens a page and Shopify builds it. For each section Shopify asks one question: is there stored HTML for this section with exactly this data? If yes, the HTML goes straight into the page, the visitor sees content at once, and Vue then hydrates it so the page is interactive. If no, for example because a price changed since the last run, the section arrives empty and Vue renders it in the browser. That dashed path is exactly what every section does today, so the worst case is today’s speed, never a broken page. Both paths end at the same fully interactive page.</p>
+<div class="slide"><section id="fit" data-transition="fade" style="background:#F6F4EF;color:#101A2B;font-family:'Inter', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:64px;font-weight:600;line-height:1.1;color:#101A2B">Other solutions considered</h2>
+<table style="font-size:24px;color:#101A2B;font-family:'Inter', Arial, sans-serif">
+<tr style="background:#101A2B"><th style="width:25%;text-align:left;color:#F6F4EF">Option</th><th style="width:33%;text-align:left;color:#F6F4EF">How it works</th><th style="width:42%;text-align:left;color:#F6F4EF">Verdict</th></tr>
+<tr style="background:#FCE7D2"><td>Pre-rendered Vue</td><td>Vue is rendered after each deploy and the HTML is stored in Shopify</td><td>Chosen. Keeps our Vue code, needs no server, and a miss behaves exactly like today.</td></tr>
+<tr><td>Rewrite sections in Liquid</td><td>Shopify renders the markup; Vue only adds behaviour</td><td>Rejected. Every section template is rebuilt, then maintained twice, in Liquid and in Vue.</td></tr>
+<tr><td>Simple Liquid fallback per section</td><td>A plain version is shown first, then Vue replaces it</td><td>Rejected. Two templates per section to keep in step, and AI assistants read the poorer copy.</td></tr>
+<tr><td>Rendering proxy in front of Shopify</td><td>Our own server renders Vue on every page request</td><td>Rejected. Shopify does not support proxied storefronts well; adds delay and an outage risk to every page view.</td></tr>
+<tr><td>Headless rebuild (Nuxt or Hydrogen)</td><td>A new storefront built on Shopify’s API</td><td>Rejected. A full rebuild that gives up the theme editor and most theme apps.</td></tr>
+</table>
+</section></div>
+<p class="notes"><b>Speaker notes.</b> We looked at five ways to get HTML into the first response. A simple Liquid fallback per section, shown first and then replaced by Vue, is always fresh, but every section then exists twice, the two drift apart, and crawlers that do not run JavaScript only ever read the simpler copy. Rewriting sections in Liquid is what a classic Shopify theme does and it is always fresh, but it means rebuilding every section template and then keeping two versions of each in step. A rendering proxy gives true per-request rendering, but puts our own server between every visitor and Shopify; Shopify does not support that setup well, and if the server is slow or down, the whole shop is. Going headless with Nuxt or Hydrogen is a new storefront project, and we would lose the theme editor and most of the apps that plug into the theme. Pre-rendering is the only option that keeps the Vue code we have, adds no infrastructure, and cannot make things worse: where stored HTML is missing or out of date, the section simply renders in the browser as it does now. It suits this store in particular because the site is small, about 205 pages (65 products, 49 collections, the rest content pages and articles), and content rarely changes.</p>
+<div class="slide"><section id="thanks" data-transition="fade" style="background:linear-gradient(135deg, #101A2B 0%, #18294A 100%);color:#F6F4EF;font-family:'Inter', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:center;gap:40px">
+<p style="font-size:24px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:#F2994A">Questions welcome</p>
+<h1 style="font-family:'Space Grotesk', Arial, sans-serif;font-size:96px;font-weight:600;line-height:1.1;color:#F6F4EF">Thank you</h1>
+<p style="font-size:32px;line-height:1.45;color:#B9C4D6">Same Vue components, no new server, content in the first response.</p>
+</section></div>
+<p class="notes"><b>Speaker notes.</b> Answers to likely questions. Status: the pilot is deployed on a preview theme and working; the live site is untouched. Size: about 205 pages in the sitemap (65 products, 49 collections, the rest content pages and articles), so one run covers the whole site. Freshness: when content changes, that section falls back to today’s behaviour until the next run; the plan is a run after each deploy, a nightly full run, and a short scheduled run in between. Limits: Shopify allows 20 stored sections per page and our pages have 15 to 20, so content sections get priority over drawers and loaders; each stored section can hold about 65 KB of HTML. Privacy: cart and login details are never stored; they are added in the browser. Measurement: the 5.5 seconds is a lab test of the live site, not real-visitor data; the same test on the pilot theme has not been run yet.</p>
+<script>
+const NS = 'http://www.w3.org/2000/svg'
+for (const section of document.querySelectorAll('section')) {
+  const wires = [...section.querySelectorAll('x-connector')]
+  if (!wires.length) continue
+  const svg = document.createElementNS(NS, 'svg')
+  svg.setAttribute('class', 'wires')
+  svg.setAttribute('width', 1920)
+  svg.setAttribute('height', 1080)
+  svg.setAttribute('aria-hidden', 'true')
+  for (const wire of wires) {
+    const n = name => Number(wire.getAttribute(name))
+    const width = parseFloat(wire.style.borderWidth) || 2, color = wire.style.color || '#000', head = width * 4
+    const points = [[n('x1'), n('y1')]]
+    if (wire.getAttribute('route') === 'hv') points.push([n('x2'), n('y1')])
+    points.push([n('x2'), n('y2')])
+    const [ax, ay] = points.at(-2), [bx, by] = points.at(-1), length = Math.hypot(bx - ax, by - ay)
+    const ux = (bx - ax) / length, uy = (by - ay) / length
+    points[points.length - 1] = [bx - ux * head, by - uy * head]
+    const line = document.createElementNS(NS, 'path')
+    line.setAttribute('d', points.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' '))
+    line.setAttribute('fill', 'none')
+    line.setAttribute('stroke', color)
+    line.setAttribute('stroke-width', width)
+    if (wire.style.borderStyle === 'dashed') line.setAttribute('stroke-dasharray', `${width * 3} ${width * 2}`)
+    const tip = document.createElementNS(NS, 'path')
+    tip.setAttribute('d', `M${bx} ${by} L${bx - ux * head - uy * head / 2} ${by - uy * head + ux * head / 2} L${bx - ux * head + uy * head / 2} ${by - uy * head - ux * head / 2} Z`)
+    tip.setAttribute('fill', color)
+    svg.append(line, tip)
+    wire.remove()
+  }
+  section.append(svg)
+}
+const fit = () => { for (const slide of document.querySelectorAll('.slide')) slide.style.setProperty('--k', slide.clientWidth / 1920) }
+addEventListener('resize', fit)
+fit()
+</script>
+</body>
+</html>

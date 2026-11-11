@@ -7,6 +7,7 @@ render in the browser. No rendering server or request proxy is needed.
 Use this for public theme sections whose shared inputs are in props. Pass cart,
 account and other visitor-specific fields separately in `client_props` for browser rendering.
 [Request flow and cache identity](docs/how-it-works.md).
+[Overview slides](docs/presentation.html): the problem, the flow and the alternatives considered.
 
 ## Requirements
 
